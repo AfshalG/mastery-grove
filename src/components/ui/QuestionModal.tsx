@@ -1,21 +1,45 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import confetti from 'canvas-confetti';
-import {
-  X,
-  RefreshCw,
-  HelpCircle,
-  CheckCircle,
-  ArrowRight,
-  BrainCircuit,
-  Cake,
-  Utensils,
-} from 'lucide-react';
+import { X } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { useGameStore } from '../../store/useGameStore';
 import { endSentence, shorten } from '../../game/text';
 import { answerComparison, hideServeAnswer } from '../../game/visuals';
-import { ConfidenceLevel } from '../../types/game';
+import { ConfidenceLevel, TreeData } from '../../types/game';
 import { FractionVisualSVG } from './FractionVisualSVG';
+import { ByteFace, Lantern, Leaf, Sprout } from './icons';
+
+const CONFIDENCE: Array<{ level: ConfidenceLevel; testId: string }> = [
+  { level: 'Not sure', testId: 'confidence-not-sure' },
+  { level: 'Fairly sure', testId: 'confidence-fairly-sure' },
+  { level: 'Very sure', testId: 'confidence-very-sure' },
+];
+
+/** The little tag that says why a tree is here: made for you, from your teacher, a memory check or a second try. */
+function TreeTag({ tree }: { tree: TreeData }) {
+  const tag = tree.isTargeted
+    ? { label: 'Made for you', color: 'var(--color-rose)' }
+    : tree.isTeacherDeployed
+      ? { label: 'From your teacher', color: 'var(--color-violet)' }
+      : tree.isMemorySprout
+        ? { label: 'Memory check', color: 'var(--color-teal)' }
+        : null;
+  if (tag)
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-paper px-2 py-0.5 text-xs font-bold border-2 border-paper-edge">
+        <Lantern size={14} color={tag.color} />
+        {tag.label}
+      </span>
+    );
+  if (tree.isSapling)
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-leaf-soft px-2 py-0.5 text-xs font-bold text-leaf-deep">
+        <Sprout size={14} />
+        Second try
+      </span>
+    );
+  return null;
+}
 
 export const QuestionModal: React.FC = () => {
   const {
@@ -66,11 +90,7 @@ export const QuestionModal: React.FC = () => {
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [confidencePromptWarning, setConfidencePromptWarning] = useState(false);
   const [showByteWhy, setShowByteWhy] = useState(false);
-
-  // Hands-on "serve" cake states
   const [servedSlices, setServedSlices] = useState<Set<number>>(new Set());
-
-  // Thought process interactive revision states
   const [showRevisionInput, setShowRevisionInput] = useState(false);
   const [studentWords, setStudentWords] = useState('');
 
@@ -88,13 +108,10 @@ export const QuestionModal: React.FC = () => {
   useEffect(() => {
     if (showExplanationModal && lastAnswerResult?.isCorrect) {
       try {
-        confetti({
-          particleCount: 65,
-          spread: 70,
-          origin: { y: 0.6 },
-          colors: ['#10b981', '#34d399', '#6ee7b7', '#fef08a'],
-        });
-      } catch (e) {}
+        confetti({ particleCount: 70, spread: 70, origin: { y: 0.6 }, colors: ['#3f7d4e', '#6fae62', '#f2c14e', '#fbe3ea'] });
+      } catch {
+        // Confetti is decoration; a failure here should never block the game.
+      }
     }
   }, [showExplanationModal, lastAnswerResult]);
 
@@ -104,12 +121,10 @@ export const QuestionModal: React.FC = () => {
 
   const handleChoiceClick = async (idx: number) => {
     if (hasSubmitted) return;
-
     if (!selectedConfidence) {
       setConfidencePromptWarning(true);
       return;
     }
-
     setConfidencePromptWarning(false);
     setSelectedChoiceIdx(idx);
     setHasSubmitted(true);
@@ -138,11 +153,8 @@ export const QuestionModal: React.FC = () => {
   };
 
   const handleConfirmThought = (confirmed: 'yes' | 'no') => {
-    if (confirmed === 'no') {
-      setShowRevisionInput(true);
-    } else {
-      confirmThoughtProcess('yes');
-    }
+    if (confirmed === 'no') setShowRevisionInput(true);
+    else confirmThoughtProcess('yes');
   };
 
   const handleSendRevision = async () => {
@@ -151,350 +163,244 @@ export const QuestionModal: React.FC = () => {
     setShowRevisionInput(false);
   };
 
-  // Feedback modal
+  const overlay = 'fixed inset-0 z-50 flex items-end sm:items-center justify-center p-2 sm:p-4 bg-[#2f2a22]/35';
+  const card = 'paper rise-in relative w-full max-w-lg max-h-[92dvh] overflow-hidden flex flex-col rounded-3xl';
+
+  // After an answer
   if (showExplanationModal && lastAnswerResult) {
     const isCorrect = lastAnswerResult.isCorrect;
 
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/65 backdrop-blur-xs">
-        <div
-          role="dialog"
-          aria-labelledby="feedback-title"
-          className="w-full max-w-md bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-200 relative p-6"
-        >
-          {/* Close button */}
+      <div className={overlay}>
+        <div role="dialog" aria-labelledby="feedback-title" className={card}>
           <button
             onClick={dismissFeedback}
-            className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition-colors"
-            aria-label="Close dialog"
+            className="absolute top-3 right-3 btn btn-paper w-9 h-9 p-0"
+            aria-label="Close"
             data-testid="close-feedback-btn"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
 
-          {/* Correct Feedback: Big tick, "Yes! That's it.", <=20 words explanation, "Keep going" button */}
-          {isCorrect && (
-            <div className="flex flex-col items-center justify-center text-center space-y-4 py-2">
-              <CheckCircle className="w-16 h-16 text-emerald-500 stroke-[2.2]" />
-              <h2 id="feedback-title" className="text-xl sm:text-2xl font-extrabold text-slate-900">
-                Yes! That's it.
-              </h2>
-              <p className="text-sm text-slate-700 font-medium leading-relaxed max-w-xs">
-                {shorten(lastAnswerResult.tree.explanation || 'Dividing top and bottom keeps the portion equal.', 24)}
-              </p>
-              <button
-                onClick={dismissFeedback}
-                data-testid="continue-btn"
-                className="w-full py-3 px-6 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl text-sm font-bold shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer mt-2"
-              >
-                <span>Keep going</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </div>
-          )}
-
-          {/* Wrong Feedback: One simple card instead of four boxes. Hide prediction-verdict box from kids. */}
-          {!isCorrect && (
-            <div className="space-y-4 py-1">
-              <h2 id="feedback-title" className="text-lg font-bold text-slate-900">
-                Not quite.
-              </h2>
-
-              {/* If question has fraction picture: Two small cakes side by side */}
-              {lastAnswerResult.tree.visual && (() => {
-                const comp = answerComparison(
-                  lastAnswerResult.tree.question,
-                  lastAnswerResult.chosenChoice,
-                  lastAnswerResult.tree.visual,
-                  lastAnswerResult.tree.serveConfig
-                );
-                if (!comp) return null;
-                return (
-                  <div className="flex items-center justify-center gap-6 py-1">
-                    <div className="flex flex-col items-center gap-1">
-                      <span className="text-xs font-bold text-slate-700">You made</span>
-                      <FractionVisualSVG visual={{ kind: 'cake', ...comp.kid }} size={84} hideLabel={true} />
-                    </div>
-                    <div className="flex flex-col items-center gap-1">
-                      <span className="text-xs font-bold text-slate-700">{comp.targetLabel} looks like</span>
-                      <FractionVisualSVG visual={{ kind: 'cake', ...comp.target }} size={84} hideLabel={true} />
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* Byte Diagnosis */}
-              {isDiagnosing ? (
-                <div className="py-4 flex items-center justify-center gap-2 text-xs font-medium text-slate-600">
-                  <RefreshCw className="w-4 h-4 animate-spin text-amber-600" />
-                  <span>Byte is checking your thinking…</span>
+          <div className="overflow-y-auto p-5 sm:p-6">
+            {isCorrect ? (
+              <div className="flex flex-col items-center text-center gap-3 py-2">
+                <div className="w-20 h-20 rounded-full bg-leaf-soft flex items-center justify-center">
+                  <Leaf size={46} />
                 </div>
-              ) : diagnosisError ? (
-                <div className="text-xs text-rose-700 flex items-center justify-between">
-                  <span>Byte couldn't check this right now.</span>
-                  <button
-                    onClick={retryDiagnosis}
-                    data-testid="retry-diagnosis-btn"
-                    className="underline font-bold"
-                  >
-                    Retry
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {/* One line: "My guess: <short>. Right?" */}
-                  {(() => {
-                    const raw = diagnosisResult?.thoughtProcess || currentThoughtRecord?.thoughtProcess || 'You used whole-number rules.';
-                    const guess = endSentence(shorten(raw, 18)).replace(/^You\b/, 'you');
-                    const asking = currentThoughtRecord?.confirmed === 'unanswered' && !showRevisionInput;
+                <h2 id="feedback-title" className="text-2xl font-black">
+                  Yes! That's it.
+                </h2>
+                <p className="text-base text-ink-soft max-w-xs">
+                  {shorten(lastAnswerResult.tree.explanation || 'Dividing top and bottom keeps the portion equal.', 24)}
+                </p>
+                <button onClick={dismissFeedback} data-testid="continue-btn" className="btn btn-leaf w-full py-3 text-base mt-2">
+                  Keep going
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <h2 id="feedback-title" className="text-2xl font-black pr-10">
+                  Not quite.
+                </h2>
+
+                {lastAnswerResult.tree.visual &&
+                  (() => {
+                    const comp = answerComparison(
+                      lastAnswerResult.tree.question,
+                      lastAnswerResult.chosenChoice,
+                      lastAnswerResult.tree.visual,
+                      lastAnswerResult.tree.serveConfig
+                    );
+                    if (!comp) return null;
                     return (
-                      <p className="text-xs sm:text-sm font-semibold text-slate-900 leading-snug">
-                        My guess: {guess}
-                        {asking && ' Right?'}
-                      </p>
+                      <div className="flex items-start justify-center gap-5">
+                        <div className="flex flex-col items-center gap-1">
+                          <span className="text-sm font-bold text-ink-soft">You made</span>
+                          <FractionVisualSVG visual={{ kind: 'cake', ...comp.kid }} size={88} hideLabel />
+                        </div>
+                        <div className="flex flex-col items-center gap-1">
+                          <span className="text-sm font-bold text-ink-soft">{comp.targetLabel} looks like</span>
+                          <FractionVisualSVG visual={{ kind: 'cake', ...comp.target }} size={88} hideLabel />
+                        </div>
+                      </div>
                     );
                   })()}
 
-                  {/* Big 👍 Yes and 🤔 Not quite buttons */}
-                  {currentThoughtRecord?.confirmed === 'unanswered' && !showRevisionInput && (
-                    <div className="flex items-center gap-2.5">
-                      <button
-                        type="button"
-                        onClick={() => handleConfirmThought('yes')}
-                        data-testid="confirm-thought-yes"
-                        className="flex-1 py-2.5 px-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
-                      >
-                        <span>👍 Yes</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleConfirmThought('no')}
-                        data-testid="confirm-thought-no"
-                        className="flex-1 py-2.5 px-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
-                      >
-                        <span>🤔 Not quite</span>
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Short revision input if "Not quite" was clicked */}
-                  {showRevisionInput && (
-                    <div className="space-y-2 pt-1">
-                      <textarea
-                        rows={2}
-                        value={studentWords}
-                        onChange={(e) => setStudentWords(e.target.value)}
-                        placeholder="How did you think about it?"
-                        className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-none"
-                      />
-                      <div className="flex justify-end">
-                        <button
-                          type="button"
-                          onClick={handleSendRevision}
-                          disabled={isRevising || !studentWords.trim()}
-                          data-testid="submit-revision-btn"
-                          className="py-1.5 px-3 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold"
-                        >
-                          Send
+                {/* Byte's guess at the thinking, as a speech bubble */}
+                <div className="flex items-start gap-3">
+                  <ByteFace size={44} mood={isDiagnosing ? 'thinking' : 'happy'} className="shrink-0" />
+                  <div className="flex-1 min-w-0 rounded-2xl rounded-tl-md bg-paper-deep px-4 py-3 space-y-3">
+                    {isDiagnosing ? (
+                      <p className="font-semibold text-ink-soft">Byte is working out how you got that…</p>
+                    ) : diagnosisError ? (
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="font-semibold">Byte couldn't check this one just now.</span>
+                        <button onClick={retryDiagnosis} data-testid="retry-diagnosis-btn" className="btn btn-paper px-3 py-1 text-sm">
+                          Retry
                         </button>
                       </div>
-                    </div>
-                  )}
+                    ) : (
+                      <>
+                        {(() => {
+                          const raw = diagnosisResult?.thoughtProcess || currentThoughtRecord?.thoughtProcess || 'You used whole-number rules.';
+                          const guess = endSentence(shorten(raw, 18)).replace(/^You\b/, 'you');
+                          const asking = currentThoughtRecord?.confirmed === 'unanswered' && !showRevisionInput;
+                          return (
+                            <p className="text-base font-semibold leading-snug">
+                              My guess: {guess}
+                              {asking && ' Right?'}
+                            </p>
+                          );
+                        })()}
 
-                  {currentThoughtRecord?.confirmed === 'yes' && (
-                    <div className="text-xs text-emerald-700 font-semibold">
-                      Got it! Byte noted your thinking.
-                    </div>
-                  )}
+                        {currentThoughtRecord?.confirmed === 'unanswered' && !showRevisionInput && (
+                          <div className="flex gap-2">
+                            <button type="button" onClick={() => handleConfirmThought('yes')} data-testid="confirm-thought-yes" className="btn btn-leaf flex-1 py-2.5">
+                              Yes
+                            </button>
+                            <button type="button" onClick={() => handleConfirmThought('no')} data-testid="confirm-thought-no" className="btn btn-paper flex-1 py-2.5">
+                              Not quite
+                            </button>
+                          </div>
+                        )}
 
-                  {/* Hint question in one line */}
-                  {diagnosisResult?.scaffoldHint && (
-                    <p className="text-xs text-indigo-900 font-medium italic">
-                      {shorten(diagnosisResult.scaffoldHint, 20)}
-                    </p>
-                  )}
+                        {showRevisionInput && (
+                          <div className="space-y-2">
+                            <textarea
+                              rows={2}
+                              value={studentWords}
+                              onChange={(e) => setStudentWords(e.target.value)}
+                              placeholder="How did you work it out?"
+                              aria-label="How you worked it out"
+                              className="w-full px-3 py-2 bg-white border-2 border-paper-edge rounded-xl text-base focus:outline-none focus:border-leaf"
+                            />
+                            <div className="flex justify-end">
+                              <button
+                                type="button"
+                                onClick={handleSendRevision}
+                                disabled={isRevising || !studentWords.trim()}
+                                data-testid="submit-revision-btn"
+                                className="btn btn-sun px-4 py-1.5 text-sm"
+                              >
+                                {isRevising ? 'Sending…' : 'Tell Byte'}
+                              </button>
+                            </div>
+                          </div>
+                        )}
 
-                  {/* Small 🌱 "Back soon" */}
-                  <div className="text-xs text-slate-500 font-medium pt-0.5">
-                    🌱 Back soon
+                        {currentThoughtRecord?.confirmed === 'yes' && (
+                          <p className="text-sm font-bold text-leaf-deep">Thanks! Byte will remember that.</p>
+                        )}
+
+                        {diagnosisResult?.scaffoldHint && (
+                          <p className="text-base font-semibold italic text-leaf-deep">{shorten(diagnosisResult.scaffoldHint, 20)}</p>
+                        )}
+                      </>
+                    )}
                   </div>
                 </div>
-              )}
 
-              {/* Continue button */}
-              <div className="pt-2">
-                <button
-                  onClick={dismissFeedback}
-                  data-testid="continue-btn"
-                  className="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <span>Keep going</span>
-                  <ArrowRight className="w-4 h-4" />
+                <p className="flex items-center gap-2 text-sm font-semibold text-ink-soft">
+                  <Sprout size={18} />
+                  This one comes back later as a sapling.
+                </p>
+
+                <button onClick={dismissFeedback} data-testid="continue-btn" className="btn btn-paper w-full py-3 text-base">
+                  Keep going
                 </button>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
     );
   }
 
-  // Active question modal
+  // The question
   const concept = world?.concepts.find((c) => c.id === selectedTree.conceptId);
   const guessPct = currentPrediction ? Math.round(currentPrediction.pCorrect * 100) : null;
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-xs">
-      <div
-        role="dialog"
-        aria-labelledby="question-modal-title"
-        className="w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-200 flex flex-col max-h-[90dvh]"
-      >
-        {/* Modal Header */}
-        <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
-          <div>
-            <h2 id="question-modal-title" className="text-xs sm:text-sm font-bold text-slate-900 flex items-center gap-2">
-              <span>{concept?.questName || 'Grove Tree'}</span>
-              {selectedTree.isMemorySprout && (
-                <span className="text-[10px] bg-teal-100 text-teal-800 px-2 py-0.5 rounded-full font-bold">
-                  Memory Sprout
-                </span>
-              )}
-              {selectedTree.isSapling && (
-                <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-medium">
-                  Review
-                </span>
-              )}
-              {selectedTree.isTargeted && (
-                <span className="text-[10px] bg-pink-100 text-pink-800 px-2 py-0.5 rounded-full font-bold">
-                  Made for you
-                </span>
-              )}
-              {selectedTree.isTeacherDeployed && (
-                <span className="text-[10px] bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full font-bold">
-                  From teacher
-                </span>
-              )}
-            </h2>
-          </div>
-          <button
-            onClick={closeTree}
-            className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-200/50 transition-colors"
-            aria-label="Close question"
-            data-testid="close-tree-btn"
-          >
-            <X className="w-5 h-5" />
+    <div className={overlay}>
+      <div role="dialog" aria-labelledby="question-modal-title" className={card}>
+        <div className="flex items-center justify-between gap-3 px-5 py-3 border-b-2 border-paper-edge/70 bg-paper-deep/60">
+          <h2 id="question-modal-title" className="flex flex-wrap items-center gap-2 font-black">
+            <span>{concept?.questName || 'Grove tree'}</span>
+            <TreeTag tree={selectedTree} />
+          </h2>
+          <button onClick={closeTree} className="btn btn-paper w-9 h-9 p-0 shrink-0" aria-label="Close question" data-testid="close-tree-btn">
+            <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Modal Body */}
         <div className="p-5 sm:p-6 overflow-y-auto space-y-4">
-          {/* Cake picture first and bigger */}
           {selectedTree.visual && (
             <div className="flex justify-center">
-              <FractionVisualSVG visual={hideServeAnswer(selectedTree.visual, selectedTree.kind)!} size={220} className="w-full max-w-sm" />
+              {/* No label on the picture: "4/8 shaded" would answer "what fraction is shaded?" */}
+              <FractionVisualSVG visual={hideServeAnswer(selectedTree.visual, selectedTree.kind)!} size={200} hideLabel className="w-full max-w-sm" />
             </div>
           )}
 
-          {/* Large question text */}
-          <h3 className="text-base sm:text-lg font-bold text-slate-900 leading-snug">
-            {selectedTree.question}
-          </h3>
+          <h3 className="text-xl font-extrabold leading-snug">{selectedTree.question}</h3>
 
-          {/* Byte's guess becomes a small chip ("Byte's guess: 75% right"), tapping it shows short why */}
           {guessPct !== null && (
-          <div className="flex flex-col items-start gap-1">
-            <button
-              type="button"
-              onClick={() => {
-                setShowByteWhy((prev) => !prev);
-                toggleShowPredictions();
-              }}
-              data-testid="toggle-predictions-visibility-btn"
-              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-50 hover:bg-indigo-100 text-indigo-900 text-xs font-semibold border border-indigo-200 cursor-pointer transition-colors"
-            >
-              <BrainCircuit className="w-3.5 h-3.5 text-indigo-600" />
-              <span>Byte's guess: {guessPct}% right</span>
-            </button>
-            {showByteWhy && (
-              <div className="text-xs text-indigo-950 bg-indigo-50/90 border border-indigo-200 rounded-xl px-3 py-1.5 animate-in fade-in duration-150 leading-snug">
-                {shorten(currentPrediction?.why || 'You understand this topic well.', 12)}
-              </div>
-            )}
-          </div>
-          )}
-
-          {/* Confidence Selector ("How sure are you?") */}
-          <div
-            className={`p-3.5 rounded-2xl border transition-all ${
-              confidencePromptWarning
-                ? 'bg-amber-50 border-amber-300 ring-2 ring-amber-400'
-                : 'bg-slate-50 border-slate-200'
-            }`}
-          >
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                <HelpCircle className="w-3.5 h-3.5 text-blue-600" />
-                How sure are you?
-              </span>
-              {confidencePromptWarning && (
-                <span className="text-[11px] text-amber-700 font-bold animate-pulse">
-                  Pick confidence first!
-                </span>
+            <div className="space-y-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowByteWhy((prev) => !prev);
+                  toggleShowPredictions();
+                }}
+                data-testid="toggle-predictions-visibility-btn"
+                className="inline-flex items-center gap-2 rounded-full bg-paper-deep pl-1 pr-3 py-1 text-sm font-bold hover:brightness-95"
+              >
+                <ByteFace size={26} />
+                Byte thinks {guessPct}% you've got this
+              </button>
+              {showByteWhy && (
+                <p className="rise-in text-sm font-semibold text-ink-soft pl-2">{shorten(currentPrediction?.why || 'You understand this topic well.', 12)}</p>
               )}
             </div>
+          )}
 
+          <div className={`rounded-2xl p-3.5 transition-colors ${confidencePromptWarning ? 'bg-sun-soft ring-2 ring-sun' : 'bg-paper-deep/70'}`}>
+            <div className="flex items-center justify-between mb-2">
+              <span className="font-extrabold">How sure are you?</span>
+              {confidencePromptWarning && <span className="text-sm font-bold text-sun-deep">Pick one first</span>}
+            </div>
             <div className="grid grid-cols-3 gap-2">
-              {(['Not sure', 'Fairly sure', 'Very sure'] as ConfidenceLevel[]).map((level) => {
-                const isSelected = selectedConfidence === level;
-                const testIdMap = {
-                  'Not sure': 'confidence-not-sure',
-                  'Fairly sure': 'confidence-fairly-sure',
-                  'Very sure': 'confidence-very-sure',
-                };
-                return (
-                  <button
-                    key={level}
-                    type="button"
-                    data-testid={testIdMap[level]}
-                    onClick={() => {
-                      setSelectedConfidence(level);
-                      setConfidencePromptWarning(false);
-                    }}
-                    className={`py-2 px-2 text-xs font-semibold rounded-xl border text-center transition-all cursor-pointer ${
-                      isSelected
-                        ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
-                        : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300 hover:bg-slate-100'
-                    }`}
-                  >
-                    {level}
-                  </button>
-                );
-              })}
+              {CONFIDENCE.map(({ level, testId }) => (
+                <button
+                  key={level}
+                  type="button"
+                  data-testid={testId}
+                  onClick={() => {
+                    setSelectedConfidence(level);
+                    setConfidencePromptWarning(false);
+                  }}
+                  className={`btn py-2 px-1 text-sm ${selectedConfidence === level ? 'btn-sun' : 'btn-paper'}`}
+                >
+                  {level}
+                </button>
+              ))}
             </div>
           </div>
 
-          {/* Hands-on "serve" section OR Choices list */}
           {selectedTree.kind === 'serve' && selectedTree.serveConfig ? (
-            <div className="space-y-3 p-4 rounded-2xl bg-amber-50/80 border border-amber-300">
+            <div className="space-y-3 rounded-2xl border-2 border-sun bg-sun-soft p-4">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-amber-950 flex items-center gap-1.5 uppercase tracking-wide">
-                  <Cake className="w-4 h-4 text-amber-700" />
-                  Serve the cake
-                </span>
-                <span className="text-xs font-bold text-amber-900 bg-white px-2.5 py-0.5 rounded-full border border-amber-300">
-                  Served: {servedSlices.size} of {selectedTree.serveConfig.totalSlices}
+                <span className="font-black">Serve the cake</span>
+                <span className="rounded-full bg-paper px-2.5 py-0.5 text-sm font-bold border-2 border-paper-edge">
+                  {servedSlices.size} of {selectedTree.serveConfig.totalSlices}
                 </span>
               </div>
-
-              <p className="text-xs text-slate-700 leading-snug">
-                Serve {selectedTree.serveConfig.targetNumerator}/{selectedTree.serveConfig.targetDenominator} of the cake.
+              <p className="text-sm font-semibold text-ink-soft">
+                Tap slices to serve {selectedTree.serveConfig.targetNumerator}/{selectedTree.serveConfig.targetDenominator} of the cake.
               </p>
-
-              {/* Slices selector grid */}
-              <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+              <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
                 {Array.from({ length: selectedTree.serveConfig.totalSlices }).map((_, i) => {
-                  const isServed = servedSlices.has(i);
+                  const served = servedSlices.has(i);
                   return (
                     <button
                       key={i}
@@ -502,64 +408,38 @@ export const QuestionModal: React.FC = () => {
                       data-testid={`serve-slice-${i}`}
                       disabled={hasSubmitted}
                       onClick={() => handleServeToggleSlice(i)}
-                      className={`p-2.5 rounded-xl border text-center transition-all flex flex-col items-center justify-center gap-1 cursor-pointer ${
-                        isServed
-                          ? 'bg-rose-500 text-white border-rose-600 shadow-sm'
-                          : 'bg-white text-slate-700 border-amber-200 hover:bg-amber-100/50'
-                      }`}
+                      aria-pressed={served}
+                      className={`btn py-2.5 text-sm ${served ? 'btn-berry' : 'btn-paper'}`}
                     >
-                      <Cake className={`w-4 h-4 ${isServed ? 'text-white' : 'text-amber-600'}`} />
-                      <span className="text-[10px] font-bold">
-                        {isServed ? 'Served' : `${i + 1}`}
-                      </span>
+                      {served ? 'Served' : i + 1}
                     </button>
                   );
                 })}
               </div>
-
-              <button
-                type="button"
-                data-testid="serve-submit-btn"
-                disabled={hasSubmitted}
-                onClick={handleServeSubmit}
-                className="w-full py-2.5 px-4 rounded-xl bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm cursor-pointer"
-              >
-                <Utensils className="w-4 h-4" />
-                <span>Serve {servedSlices.size} Slices</span>
+              <button type="button" data-testid="serve-submit-btn" disabled={hasSubmitted} onClick={handleServeSubmit} className="btn btn-leaf w-full py-2.5">
+                Serve {servedSlices.size} slice{servedSlices.size === 1 ? '' : 's'}
               </button>
             </div>
           ) : (
-            /* Choices list */
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-700">Your answer:</label>
-              <div className="grid grid-cols-1 gap-2">
-                {selectedTree.choices.map((choice, idx) => {
-                  const isSelected = selectedChoiceIdx === idx;
-                  return (
-                    <button
-                      key={idx}
-                      type="button"
-                      data-testid={`choice-${idx}`}
-                      disabled={hasSubmitted}
-                      onClick={() => handleChoiceClick(idx)}
-                      className={`w-full text-left p-3 rounded-xl border text-xs sm:text-sm font-medium transition-all flex items-start gap-2.5 cursor-pointer ${
-                        isSelected
-                          ? 'bg-slate-900 text-white border-slate-900'
-                          : 'bg-white text-slate-800 border-slate-200 hover:border-blue-500 hover:bg-blue-50/40'
-                      }`}
-                    >
-                      <span
-                        className={`w-5 h-5 rounded-md text-xs font-bold flex items-center justify-center shrink-0 mt-0.5 ${
-                          isSelected ? 'bg-white text-slate-900' : 'bg-slate-100 text-slate-600'
-                        }`}
-                      >
-                        {String.fromCharCode(65 + idx)}
-                      </span>
-                      <span className="leading-snug pt-0.5">{choice}</span>
-                    </button>
-                  );
-                })}
-              </div>
+            <div className="grid grid-cols-1 gap-2">
+              {selectedTree.choices.map((choice, idx) => {
+                const isSelected = selectedChoiceIdx === idx;
+                return (
+                  <button
+                    key={idx}
+                    type="button"
+                    data-testid={`choice-${idx}`}
+                    disabled={hasSubmitted}
+                    onClick={() => handleChoiceClick(idx)}
+                    className={`btn w-full justify-start text-left px-3 py-3 text-base ${isSelected ? 'btn-sun' : 'btn-paper'}`}
+                  >
+                    <span className="w-7 h-7 shrink-0 rounded-full bg-sun border-2 border-sun-deep flex items-center justify-center text-sm font-black">
+                      {String.fromCharCode(65 + idx)}
+                    </span>
+                    <span className="font-bold leading-snug">{choice}</span>
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>

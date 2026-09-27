@@ -1,0 +1,93 @@
+// Hand-drawn icons for the kid-facing screens: one stroke weight, round ends, the storybook palette.
+import React from 'react';
+
+type IconProps = { size?: number; className?: string };
+const INK = '#2f2a22';
+
+/** Professor Byte, the tutor: a round little robot with a screen face and a leaf antenna. */
+export const ByteFace: React.FC<IconProps & { mood?: 'happy' | 'thinking' }> = ({ size = 32, className, mood = 'happy' }) => (
+  <svg viewBox="0 0 48 48" width={size} height={size} className={className} aria-hidden="true">
+    <path d="M24 10 C 24 6, 27 4, 31 4 C 30 8, 28 9, 24 10 Z" fill="#6fae62" stroke={INK} strokeWidth="2" strokeLinejoin="round" />
+    <path d="M24 10 V 14" stroke={INK} strokeWidth="2" strokeLinecap="round" />
+    <rect x="7" y="14" width="34" height="28" rx="11" fill="#f6efe0" stroke={INK} strokeWidth="2.2" />
+    <rect x="12" y="19" width="24" height="17" rx="6" fill="#2f3b3a" />
+    {mood === 'happy' ? (
+      <>
+        <circle cx="19" cy="26" r="2.4" fill="#8fe3c5" />
+        <circle cx="29" cy="26" r="2.4" fill="#8fe3c5" />
+        <path d="M19.5 31 Q 24 34 28.5 31" stroke="#8fe3c5" strokeWidth="2" fill="none" strokeLinecap="round" />
+      </>
+    ) : (
+      <>
+        <path d="M17 26 H 21.5" stroke="#8fe3c5" strokeWidth="2.2" strokeLinecap="round" />
+        <circle cx="29" cy="25.5" r="2.4" fill="#8fe3c5" />
+        <path d="M20.5 31.5 H 27.5" stroke="#8fe3c5" strokeWidth="2" strokeLinecap="round" />
+      </>
+    )}
+    <circle cx="7" cy="28" r="2.5" fill="#f2c14e" stroke={INK} strokeWidth="1.8" />
+    <circle cx="41" cy="28" r="2.5" fill="#f2c14e" stroke={INK} strokeWidth="1.8" />
+  </svg>
+);
+
+/** A leaf: filled for grown, hollow for still to do. */
+export const Leaf: React.FC<IconProps & { color?: string; hollow?: boolean }> = ({ size = 16, className, color = '#3f7d4e', hollow }) => (
+  <svg viewBox="0 0 24 24" width={size} height={size} className={className} aria-hidden="true">
+    <path
+      d="M4 20 C 4 10, 10 4, 20 4 C 20 14, 14 20, 4 20 Z"
+      fill={hollow ? 'none' : color}
+      stroke={hollow ? '#9c8b6a' : INK}
+      strokeWidth="1.8"
+      strokeLinejoin="round"
+      strokeDasharray={hollow ? '3 2.5' : undefined}
+    />
+    {!hollow && <path d="M5 19 L 15 9" stroke="#fffaf0" strokeWidth="1.6" strokeLinecap="round" opacity="0.8" />}
+  </svg>
+);
+
+/** The lantern that hangs over trees added for a kid. */
+export const Lantern: React.FC<IconProps & { color: string }> = ({ size = 16, className, color }) => (
+  <svg viewBox="0 0 24 24" width={size} height={size} className={className} aria-hidden="true">
+    <path d="M9 4 H 15" stroke={INK} strokeWidth="2" strokeLinecap="round" />
+    <path d="M12 2 V 4" stroke={INK} strokeWidth="2" strokeLinecap="round" />
+    <rect x="7" y="5" width="10" height="3" rx="1.2" fill="#5b4636" stroke={INK} strokeWidth="1.5" />
+    <ellipse cx="12" cy="14" rx="6" ry="6.5" fill={color} stroke={INK} strokeWidth="1.8" />
+    <path d="M10 12 Q 12 10 14 12" stroke="#fffaf0" strokeWidth="1.4" fill="none" strokeLinecap="round" opacity="0.8" />
+  </svg>
+);
+
+/** A two-leaf sprout, for saplings. */
+export const Sprout: React.FC<IconProps & { color?: string }> = ({ size = 16, className, color = '#6fae62' }) => (
+  <svg viewBox="0 0 24 24" width={size} height={size} className={className} aria-hidden="true">
+    <path d="M12 21 V 11" stroke={INK} strokeWidth="2" strokeLinecap="round" />
+    <path d="M12 12 C 12 7, 8 5, 4 5 C 4 10, 8 12, 12 12 Z" fill={color} stroke={INK} strokeWidth="1.6" strokeLinejoin="round" />
+    <path d="M12 14 C 12 9, 16 7, 20 7 C 20 12, 16 14, 12 14 Z" fill={color} stroke={INK} strokeWidth="1.6" strokeLinejoin="round" />
+  </svg>
+);
+
+/** An apple, for the teacher. */
+export const Apple: React.FC<IconProps> = ({ size = 18, className }) => (
+  <svg viewBox="0 0 24 24" width={size} height={size} className={className} aria-hidden="true">
+    <path d="M12 7 C 9 5, 4 6, 4 12 C 4 17, 8 21, 10 21 C 11 21, 11.5 20.4, 12 20.4 C 12.5 20.4, 13 21, 14 21 C 16 21, 20 17, 20 12 C 20 6, 15 5, 12 7 Z" fill="#d9534f" stroke={INK} strokeWidth="1.7" strokeLinejoin="round" />
+    <path d="M12 7 C 12 5, 13 3.5, 14.5 3" stroke={INK} strokeWidth="1.7" strokeLinecap="round" fill="none" />
+    <path d="M13 5 C 15 3.5, 17.5 4, 18 5.5 C 16 6.5, 14 6.2, 13 5 Z" fill="#6fae62" stroke={INK} strokeWidth="1.4" strokeLinejoin="round" />
+  </svg>
+);
+
+/** A folded trail map, for the list of trees. */
+export const TrailMap: React.FC<IconProps> = ({ size = 18, className }) => (
+  <svg viewBox="0 0 24 24" width={size} height={size} className={className} aria-hidden="true">
+    <path d="M3 6 L 9 4 L 15 6 L 21 4 V 18 L 15 20 L 9 18 L 3 20 Z" fill="#fdf0cc" stroke={INK} strokeWidth="1.7" strokeLinejoin="round" />
+    <path d="M9 4 V 18 M15 6 V 20" stroke="#c9b690" strokeWidth="1.3" />
+    <path d="M5 15 C 8 13, 10 16, 13 12 S 18 9, 19 8" stroke="#c2493d" strokeWidth="1.6" fill="none" strokeLinecap="round" strokeDasharray="2 2" />
+  </svg>
+);
+
+/** A chunky arrow for the touch pad. */
+export const PadArrow: React.FC<IconProps & { direction: 'up' | 'down' | 'left' | 'right' }> = ({ size = 20, className, direction }) => {
+  const turn = { up: 0, right: 90, down: 180, left: 270 }[direction];
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} className={className} aria-hidden="true" style={{ transform: `rotate(${turn}deg)` }}>
+      <path d="M12 5 L 19 14 H 14.5 V 19 H 9.5 V 14 H 5 Z" fill={INK} strokeLinejoin="round" stroke={INK} strokeWidth="1.2" />
+    </svg>
+  );
+};

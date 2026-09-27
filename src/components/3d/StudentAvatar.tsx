@@ -16,6 +16,17 @@ const MOVE_KEYS = new Set(['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowlef
 const MARK_Y = 0.09;
 const groundMark = { transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -5, polygonOffsetUnits: -5 };
 
+// A storybook explorer: yellow raincoat, red knit hat (easy to spot from behind, where the camera sits).
+const COAT = '#f2c14e';
+const COAT_SHADE = '#e2ab3a';
+const PACK = '#5b8c5a';
+const PACK_SHADE = '#4d7a4c';
+const SKIN = '#f1cfae';
+const HAT = '#d9534f';
+const HAT_BAND = '#f6efe0';
+const TROUSERS = '#4a4e69';
+const BOOTS = '#6b4a2b';
+
 const isTyping = () => {
   const tag = document.activeElement?.tagName;
   return tag === 'INPUT' || tag === 'TEXTAREA';
@@ -34,7 +45,7 @@ export const StudentAvatar: React.FC = () => {
   const targetPosition = useGameStore((s) => s.targetPosition);
 
   const keys = useRef(new Set<string>());
-  const heading = useRef(0);
+  const heading = useRef(Math.PI); // facing up the trail, away from the camera
   const lastWritten = useRef<[number, number, number] | null>(null);
   const lastPublish = useRef(0);
   const wasMoving = useRef(false);
@@ -186,74 +197,98 @@ export const StudentAvatar: React.FC = () => {
 
         <group ref={bodyRef}>
           <group ref={torsoRef} position={[0, 0.95, 0]}>
-            {/* Sweater */}
+            {/* Yellow raincoat, flaring a little at the hem */}
             <mesh castShadow receiveShadow>
-              <boxGeometry args={[0.65, 0.74, 0.38]} />
-              <meshStandardMaterial color="#2563eb" roughness={0.7} />
+              <capsuleGeometry args={[0.3, 0.36, 6, 14]} />
+              <meshLambertMaterial color={COAT} />
+            </mesh>
+            <mesh castShadow position={[0, -0.33, 0]}>
+              <cylinderGeometry args={[0.32, 0.37, 0.18, 14]} />
+              <meshLambertMaterial color={COAT_SHADE} />
+            </mesh>
+            {[0.12, -0.08].map((y) => (
+              <mesh key={y} position={[0, y, 0.3]}>
+                <sphereGeometry args={[0.035, 8, 6]} />
+                <meshLambertMaterial color="#6b4a2b" />
+              </mesh>
+            ))}
+
+            {/* Backpack */}
+            <mesh castShadow position={[0, 0.05, -0.3]}>
+              <boxGeometry args={[0.44, 0.5, 0.2]} />
+              <meshLambertMaterial color={PACK} />
+            </mesh>
+            <mesh position={[0, 0.22, -0.31]}>
+              <boxGeometry args={[0.46, 0.16, 0.23]} />
+              <meshLambertMaterial color={PACK_SHADE} />
             </mesh>
 
-            {/* School backpack */}
-            <mesh castShadow position={[0, 0.02, -0.25]}>
-              <boxGeometry args={[0.48, 0.52, 0.22]} />
-              <meshStandardMaterial color="#dc2626" roughness={0.8} />
-            </mesh>
-            <mesh position={[0, -0.08, -0.37]}>
-              <boxGeometry args={[0.36, 0.24, 0.08]} />
-              <meshStandardMaterial color="#b91c1c" roughness={0.8} />
-            </mesh>
-
-            {/* Head */}
-            <group position={[0, 0.65, 0]}>
+            {/* Head, knit hat with a pompom, dot eyes and rosy cheeks */}
+            <group position={[0, 0.72, 0]}>
               <mesh castShadow receiveShadow>
-                <boxGeometry args={[0.52, 0.52, 0.48]} />
-                <meshStandardMaterial color="#fcd34d" roughness={0.5} />
+                <sphereGeometry args={[0.33, 20, 16]} />
+                <meshLambertMaterial color={SKIN} />
               </mesh>
-              <mesh position={[0, 0.28, 0]}>
-                <boxGeometry args={[0.56, 0.12, 0.52]} />
-                <meshStandardMaterial color="#1e40af" roughness={0.6} />
+              <mesh position={[0, 0.04, 0]}>
+                <sphereGeometry args={[0.345, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2]} />
+                <meshLambertMaterial color={HAT} />
               </mesh>
-              <mesh position={[0, 0.24, 0.32]}>
-                <boxGeometry args={[0.52, 0.05, 0.25]} />
-                <meshStandardMaterial color="#1e3a8a" roughness={0.6} />
+              <mesh position={[0, 0.05, 0]}>
+                <cylinderGeometry args={[0.352, 0.352, 0.09, 20]} />
+                <meshLambertMaterial color={HAT_BAND} />
               </mesh>
-              <mesh position={[-0.14, 0.04, 0.25]}>
-                <boxGeometry args={[0.08, 0.09, 0.04]} />
-                <meshStandardMaterial color="#0f172a" roughness={0.2} />
+              <mesh position={[0, 0.42, 0]}>
+                <sphereGeometry args={[0.1, 10, 8]} />
+                <meshLambertMaterial color={HAT_BAND} />
               </mesh>
-              <mesh position={[0.14, 0.04, 0.25]}>
-                <boxGeometry args={[0.08, 0.09, 0.04]} />
-                <meshStandardMaterial color="#0f172a" roughness={0.2} />
-              </mesh>
+              {[-0.11, 0.11].map((x) => (
+                <mesh key={`eye${x}`} position={[x, -0.02, 0.3]}>
+                  <sphereGeometry args={[0.045, 10, 8]} />
+                  <meshBasicMaterial color="#2b2a24" />
+                </mesh>
+              ))}
+              {[-0.19, 0.19].map((x) => (
+                <mesh key={`cheek${x}`} position={[x, -0.11, 0.26]} scale={[1, 0.6, 0.4]}>
+                  <sphereGeometry args={[0.06, 10, 8]} />
+                  <meshBasicMaterial color="#f4a7a0" />
+                </mesh>
+              ))}
             </group>
 
             {/* Arms, pivoting at the shoulders */}
-            <group ref={leftArmRef} position={[-0.43, 0.32, 0]}>
-              <mesh castShadow position={[0, -0.27, 0]}>
-                <boxGeometry args={[0.18, 0.6, 0.22]} />
-                <meshStandardMaterial color="#3b82f6" roughness={0.7} />
-              </mesh>
-            </group>
-            <group ref={rightArmRef} position={[0.43, 0.32, 0]}>
-              <mesh castShadow position={[0, -0.27, 0]}>
-                <boxGeometry args={[0.18, 0.6, 0.22]} />
-                <meshStandardMaterial color="#3b82f6" roughness={0.7} />
-              </mesh>
-            </group>
+            {[
+              { ref: leftArmRef, x: -0.36 },
+              { ref: rightArmRef, x: 0.36 },
+            ].map(({ ref, x }) => (
+              <group key={x} ref={ref} position={[x, 0.3, 0]}>
+                <mesh castShadow position={[0, -0.24, 0]}>
+                  <capsuleGeometry args={[0.09, 0.32, 4, 10]} />
+                  <meshLambertMaterial color={COAT} />
+                </mesh>
+                <mesh position={[0, -0.5, 0]}>
+                  <sphereGeometry args={[0.085, 10, 8]} />
+                  <meshLambertMaterial color={SKIN} />
+                </mesh>
+              </group>
+            ))}
           </group>
 
-          {/* Legs, pivoting at the hips */}
-          <group ref={leftLegRef} position={[-0.18, 0.6, 0]}>
-            <mesh castShadow position={[0, -0.3, 0]}>
-              <boxGeometry args={[0.22, 0.6, 0.26]} />
-              <meshStandardMaterial color="#1e293b" roughness={0.8} />
-            </mesh>
-          </group>
-          <group ref={rightLegRef} position={[0.18, 0.6, 0]}>
-            <mesh castShadow position={[0, -0.3, 0]}>
-              <boxGeometry args={[0.22, 0.6, 0.26]} />
-              <meshStandardMaterial color="#1e293b" roughness={0.8} />
-            </mesh>
-          </group>
+          {/* Legs and boots, pivoting at the hips */}
+          {[
+            { ref: leftLegRef, x: -0.13 },
+            { ref: rightLegRef, x: 0.13 },
+          ].map(({ ref, x }) => (
+            <group key={x} ref={ref} position={[x, 0.62, 0]}>
+              <mesh castShadow position={[0, -0.28, 0]}>
+                <capsuleGeometry args={[0.1, 0.3, 4, 10]} />
+                <meshLambertMaterial color={TROUSERS} />
+              </mesh>
+              <mesh castShadow position={[0, -0.55, 0.04]}>
+                <boxGeometry args={[0.2, 0.12, 0.3]} />
+                <meshLambertMaterial color={BOOTS} />
+              </mesh>
+            </group>
+          ))}
         </group>
       </group>
     </>

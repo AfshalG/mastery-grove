@@ -337,3 +337,61 @@ export function scatterDecorations(layout: ForestLayout, trees: Vec2[], seed = 1
   }
   return out;
 }
+
+export interface ForestTree extends Vec2 {
+  kind: 'round' | 'pine';
+  scale: number;
+  /** 0..2: which of the skin's foliage shades to use. */
+  shade: number;
+  rotation: number;
+}
+
+/**
+ * The scenery forest: a thick ring of trees around the play area, and a light sprinkle in the open meadow
+ * between groves. Kept off the trail, the clearings, the signs, the spawn point and the question trees.
+ * Seeded, so every player sees the same forest; pass the trees standing now so no question tree ever
+ * grows inside a scenery tree.
+ */
+export function scatterForest(layout: ForestLayout, trees: Vec2[], seed = 4242): ForestTree[] {
+  let s = seed;
+  const rand = () => (s = (s * 16807) % 2147483647) / 2147483647;
+  const b = layout.bounds;
+  const RING = 30; // how deep the surrounding forest goes
+  const OUTSIDE_STEP = 5.5;
+  const INSIDE_STEP = 9;
+  const out: ForestTree[] = [];
+
+  const isClear = (p: Vec2) =>
+    distanceToTrail(layout, p) > LAYOUT.TRAIL_HALF_WIDTH + 2.5 &&
+    dist(p, layout.spawn) > 5 &&
+    trees.every((t) => dist(p, t) > LAYOUT.TREE_GAP) &&
+    layout.groves.every((g) => {
+      const [e1, e2] = signBoard(g);
+      return dist(p, g.centre) > g.clearingRadius + 1 && distToSegment(p, e1, e2) > 3;
+    });
+  const isInside = (p: Vec2) => p.x > b.minX && p.x < b.maxX && p.z > b.minZ && p.z < b.maxZ;
+  const plant = (p: Vec2, big: boolean) =>
+    out.push({
+      ...p,
+      kind: rand() < 0.6 ? 'round' : 'pine',
+      scale: (big ? 1.1 : 0.9) + rand() * 0.5,
+      shade: Math.floor(rand() * 3),
+      rotation: rand() * Math.PI * 2,
+    });
+
+  // The surrounding forest, just past the walkable edge.
+  for (let x = b.minX - RING; x <= b.maxX + RING; x += OUTSIDE_STEP) {
+    for (let z = b.minZ - RING; z <= b.maxZ + RING; z += OUTSIDE_STEP) {
+      const p = { x: x + (rand() - 0.5) * OUTSIDE_STEP * 0.8, z: z + (rand() - 0.5) * OUTSIDE_STEP * 0.8 };
+      if (!isInside(p) && isClear(p)) plant(p, true);
+    }
+  }
+  // A few trees in the open meadow, so the walk between groves still feels like a forest.
+  for (let x = b.minX + INSIDE_STEP / 2; x < b.maxX; x += INSIDE_STEP) {
+    for (let z = b.minZ + INSIDE_STEP / 2; z < b.maxZ; z += INSIDE_STEP) {
+      const p = { x: x + (rand() - 0.5) * INSIDE_STEP * 0.6, z: z + (rand() - 0.5) * INSIDE_STEP * 0.6 };
+      if (rand() < 0.55 && isInside(p) && isClear(p)) plant(p, false);
+    }
+  }
+  return out;
+}

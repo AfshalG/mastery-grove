@@ -6,7 +6,6 @@ import {
   XCircle,
   HelpCircle,
   TreePine,
-  Sparkles,
   Bot,
   BrainCircuit,
   Target,
@@ -337,7 +336,7 @@ export const TeacherScreen: React.FC = () => {
   const allStudents = useMemo<ClassmateData[]>(() => {
     const liveStudent: ClassmateData = {
       id: 'student-you',
-      name: 'You (Current Student)',
+      name: 'You (playing now)',
       avatarColor: '#6366f1',
       isLiveStudent: true,
       misconceptionStrength: liveStrengths,
@@ -525,7 +524,7 @@ export const TeacherScreen: React.FC = () => {
       return {
         topMisconceptions: [],
         priorityOrderSummary: 'Quick summary (AI unavailable): Review core concepts.',
-        fullReportMarkdown: '# End of Session Pedagogical Rundown\n*(Quick summary (AI unavailable))*',
+        fullReportMarkdown: '# What to reteach\n*(Quick summary: Gemini was unavailable)*',
       };
     }
 
@@ -568,7 +567,7 @@ export const TeacherScreen: React.FC = () => {
       ? `Priority 1 is "${topMisconceptions[0].label}" (affects ${topMisconceptions[0].affectedStudents.join(', ')}). Reteach using concrete physical models before advancing.`
       : 'Review core foundational concepts with visual fraction models.';
 
-    let markdown = `# Mastery Grove — End of Session Pedagogical Rundown\n*(Quick summary (AI unavailable))*\n\n`;
+    let markdown = `# Mastery Grove: what to reteach\n*(Quick summary: Gemini was unavailable)*\n\n`;
     markdown += `**Subject:** ${world.subject}\n\n`;
     markdown += `## Executive Priority Summary\n${priorityOrderSummary}\n\n`;
     markdown += `## Top Misconceptions & Reteach Plan\n`;
@@ -658,16 +657,16 @@ export const TeacherScreen: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen w-full bg-slate-950 text-slate-100 flex flex-col p-4 sm:p-8 select-none">
+    <div className="min-h-dvh w-full bg-[#efe6d2] text-ink flex flex-col p-4 sm:p-8">
       <div className="max-w-6xl mx-auto w-full space-y-6">
         {/* Navigation Bar */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-paper-edge pb-4">
           <button
             onClick={() => setScreen('game')}
             data-testid="back-to-forest-btn"
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 text-xs font-bold transition-all border border-slate-700 shadow-md hover:shadow-lg w-fit"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-paper-deep hover:bg-paper-edge text-ink text-xs font-bold transition-all border border-paper-edge shadow-md hover:shadow-[0_3px_0_var(--color-paper-edge)] w-fit"
           >
-            <ArrowLeft className="w-4 h-4 text-emerald-400" />
+            <ArrowLeft className="w-4 h-4 text-leaf-deep" />
             <span>Back to the forest</span>
           </button>
 
@@ -676,33 +675,33 @@ export const TeacherScreen: React.FC = () => {
             <button
               onClick={handleExportBrief}
               data-testid="export-brief-btn"
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-bold transition-all border border-slate-700 shadow-md"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-paper-deep hover:bg-paper-edge text-ink hover:text-ink text-xs font-bold transition-all border border-paper-edge shadow-md"
               title="Copy markdown summary of class misconceptions"
             >
-              {copiedBriefToast ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4 text-slate-400" />}
-              <span>{copiedBriefToast ? 'Copied Brief!' : 'Export Brief'}</span>
+              {copiedBriefToast ? <Check className="w-4 h-4 text-leaf-deep" /> : <Copy className="w-4 h-4 text-ink-soft" />}
+              <span>{copiedBriefToast ? 'Copied!' : 'Copy brief'}</span>
             </button>
 
             {/* End of session rundown button */}
             <button
               onClick={handleGenerateRundown}
               data-testid="rundown-btn"
-              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all shadow-md"
+              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-sun hover:brightness-105 text-ink text-xs font-bold transition-all shadow-md"
             >
               <FileText className="w-4 h-4" />
-              <span>End of session rundown</span>
+              <span>What to reteach</span>
             </button>
 
-            <div className="flex items-center gap-2 pl-2 border-l border-slate-800">
-              <div className="w-8 h-8 rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-400/30 flex items-center justify-center shadow-xs">
+            <div className="flex items-center gap-2 pl-2 border-l border-paper-edge">
+              <div className="w-8 h-8 rounded-xl bg-sun text-leaf-deep border border-paper-edge flex items-center justify-center shadow-xs">
                 <GraduationCap className="w-5 h-5" />
               </div>
               <div>
-                <span className="text-xs font-bold uppercase tracking-wider text-indigo-400 block leading-none">
+                <span className="text-xs font-bold uppercase tracking-wider text-leaf-deep block leading-none">
                   Teacher View
                 </span>
-                <span className="text-[11px] text-slate-400">
-                  Adaptive Cognitive Briefing
+                <span className="text-[11px] text-ink-soft">
+                  What your class is thinking
                 </span>
               </div>
             </div>
@@ -711,35 +710,34 @@ export const TeacherScreen: React.FC = () => {
 
         {/* Global Toast if Quest Deployed or Sprout Planted */}
         {teacherToast && (
-          <div className="p-3 bg-purple-950/80 border border-purple-500 rounded-2xl text-xs text-purple-200 flex items-center gap-2 animate-in fade-in">
-            <Sparkles className="w-4 h-4 text-purple-400 shrink-0" />
+          <div className="p-3 bg-paper-deep border border-paper-edge rounded-2xl text-xs text-leaf-deep flex items-center gap-2 rise-in">
             <span className="font-semibold">{teacherToast}</span>
           </div>
         )}
 
         {/* Tabs: Heatmap vs Live Flags Feed */}
-        <div className="flex items-center gap-2 bg-slate-900/60 p-1.5 rounded-2xl border border-slate-800 max-w-sm">
+        <div className="flex items-center gap-2 bg-paper p-1.5 rounded-2xl border border-paper-edge max-w-sm">
           <button
             type="button"
             data-testid="tab-heatmap"
             onClick={() => setActiveTab('heatmap')}
             className={`flex-1 py-2 px-3 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 ${
-              activeTab === 'heatmap' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
+              activeTab === 'heatmap' ? 'bg-sun text-ink shadow-sm' : 'text-ink-soft hover:text-ink'
             }`}
           >
             <Activity className="w-3.5 h-3.5" />
-            <span>Misconception Map</span>
+            <span>Class map</span>
           </button>
           <button
             type="button"
             data-testid="tab-flags"
             onClick={() => setActiveTab('flags')}
             className={`flex-1 py-2 px-3 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 ${
-              activeTab === 'flags' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
+              activeTab === 'flags' ? 'bg-sun text-ink shadow-sm' : 'text-ink-soft hover:text-ink'
             }`}
           >
-            <Flag className="w-3.5 h-3.5 text-amber-400" />
-            <span>Flags Feed ({allFlags.length})</span>
+            <Flag className="w-3.5 h-3.5 text-sun-deep" />
+            <span>Just flagged ({allFlags.length})</span>
           </button>
         </div>
 
@@ -748,11 +746,11 @@ export const TeacherScreen: React.FC = () => {
             {/* Class Roster Selector Tabs */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                  <Users className="w-3.5 h-3.5 text-indigo-400" />
-                  Class Roster
+                <label className="text-xs font-bold uppercase tracking-wider text-ink-soft flex items-center gap-1.5">
+                  <Users className="w-3.5 h-3.5 text-leaf-deep" />
+                  Your class
                 </label>
-                <span className="text-[11px] text-slate-400">Click a student to view diagnosis or generate intervention</span>
+                <span className="text-[11px] text-ink-soft">Pick a student to see their thinking</span>
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
@@ -763,8 +761,8 @@ export const TeacherScreen: React.FC = () => {
                       key={st.id}
                       className={`p-3 rounded-2xl border text-left transition-all relative overflow-hidden flex flex-col justify-between ${
                         isSelected
-                          ? 'bg-indigo-950/80 border-indigo-500 ring-2 ring-indigo-400/30 shadow-lg'
-                          : 'bg-slate-900/80 border-slate-800 hover:bg-slate-800/80 text-slate-300'
+                          ? 'bg-paper-deep border-paper-edge ring-2 ring-sun shadow-[0_3px_0_var(--color-paper-edge)]'
+                          : 'bg-paper border-paper-edge hover:bg-paper-deep text-ink-soft'
                       }`}
                     >
                       <button
@@ -774,29 +772,29 @@ export const TeacherScreen: React.FC = () => {
                         className="w-full text-left"
                       >
                         <div className="flex items-start justify-between gap-1 mb-1.5">
-                          <span className="font-bold text-xs truncate text-white">{st.name}</span>
+                          <span className="font-bold text-xs truncate text-ink">{st.name}</span>
                           {!st.isLiveStudent && (
-                            <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-slate-800 text-slate-400 border border-slate-700 shrink-0 font-medium">
-                              sample data
+                            <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-paper-deep text-ink-soft border border-paper-edge shrink-0 font-medium">
+                              sample
                             </span>
                           )}
                           {st.isLiveStudent && (
-                            <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-blue-950 text-blue-300 border border-blue-700 shrink-0 font-bold animate-pulse">
+                            <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-paper-deep text-leaf-deep border border-paper-edge shrink-0 font-bold animate-pulse">
                               Live
                             </span>
                           )}
                         </div>
 
-                        <div className="text-[11px] text-slate-400 space-y-0.5">
+                        <div className="text-[11px] text-ink-soft space-y-0.5">
                           <div>
-                            Accuracy: <strong className="text-slate-200">{getStudentAccuracy(st)}</strong>
+                            Accuracy: <strong className="text-ink">{getStudentAccuracy(st)}</strong>
                           </div>
                           <div className="truncate">
                             Active:{' '}
                             {st.activeMisconceptionId ? (
-                              <span className="text-amber-400 font-semibold">{st.activeMisconceptionId.toUpperCase()}</span>
+                              <span className="text-sun-deep font-semibold">{st.activeMisconceptionId.toUpperCase()}</span>
                             ) : (
-                              <span className="text-emerald-400 font-bold">Clear</span>
+                              <span className="text-leaf-deep font-bold">Clear</span>
                             )}
                           </div>
                         </div>
@@ -807,10 +805,9 @@ export const TeacherScreen: React.FC = () => {
                         type="button"
                         onClick={() => handleGenerateIntervention('student', st.id)}
                         data-testid={`intervention-student-${st.id}`}
-                        className="mt-2 pt-1.5 border-t border-slate-800/80 w-full inline-flex items-center justify-center gap-1 text-[10px] font-bold text-indigo-400 hover:text-indigo-300 transition-colors"
+                        className="mt-2 pt-1.5 border-t border-paper-edge w-full inline-flex items-center justify-center gap-1 text-[10px] font-bold text-leaf-deep hover:text-leaf-deep transition-colors"
                       >
-                        <Sparkles className="w-3 h-3 text-indigo-400" />
-                        <span>Plan Intervention</span>
+                        <span>Plan help</span>
                       </button>
                     </div>
                   );
@@ -819,30 +816,30 @@ export const TeacherScreen: React.FC = () => {
             </div>
 
             {/* Misconception Map Matrix */}
-            <div className="p-6 rounded-3xl bg-slate-900/80 border border-slate-800 shadow-xl space-y-4">
+            <div className="p-6 rounded-3xl bg-paper border border-paper-edge shadow-[0_3px_0_var(--color-paper-edge)] space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
-                  <Activity className="w-5 h-5 text-amber-400" />
+                  <Activity className="w-5 h-5 text-sun-deep" />
                   <div>
-                    <h2 className="text-sm font-bold text-white">Class Misconception Map</h2>
-                    <p className="text-xs text-slate-400">
-                      Click any cell to inspect the student’s thinking process and trigger a targeted lesson plan.
+                    <h2 className="text-sm font-bold text-ink">Mix-ups across the class</h2>
+                    <p className="text-xs text-ink-soft">
+                      Tap a box to see what that student was thinking.
                     </p>
                   </div>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3 text-[11px]">
                   <span className="flex items-center gap-1">
-                    <span className="w-3 h-3 rounded-xs bg-emerald-950 border border-emerald-500" /> Green = Overcome
+                    <span className="w-3 h-3 rounded-xs bg-leaf-soft border border-leaf/40" /> Green = Overcome
                   </span>
                   <span className="flex items-center gap-1">
-                    <span className="w-3 h-3 rounded-xs bg-amber-950 border border-amber-500" /> Yellow = Active
+                    <span className="w-3 h-3 rounded-xs bg-sun-soft border border-sun" /> Yellow = Active
                   </span>
                   <span className="flex items-center gap-1">
-                    <span className="w-3 h-3 rounded-xs bg-rose-950 border border-rose-500" /> Red = Severe (≥60%)
+                    <span className="w-3 h-3 rounded-xs bg-berry-soft border border-berry/50" /> Red = Severe (≥60%)
                   </span>
                   <span className="flex items-center gap-1">
-                    <span className="w-3 h-3 rounded-xs bg-slate-800 border border-slate-700" /> Gray = Untested
+                    <span className="w-3 h-3 rounded-xs bg-paper-deep border border-paper-edge" /> Gray = Untested
                   </span>
                 </div>
               </div>
@@ -850,11 +847,11 @@ export const TeacherScreen: React.FC = () => {
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
-                    <tr className="border-b border-slate-800 text-slate-400">
+                    <tr className="border-b border-paper-edge text-ink-soft">
                       <th className="py-2.5 px-3 font-semibold min-w-[220px]">Misconception</th>
                       {allStudents.map((st) => (
                         <th key={st.id} className="py-2.5 px-2 font-semibold text-center min-w-[90px]">
-                          <span className={st.id === selectedStudentId ? 'text-indigo-300 font-bold' : ''}>
+                          <span className={st.id === selectedStudentId ? 'text-leaf-deep font-bold' : ''}>
                             {st.name.split(' ')[0]}
                           </span>
                         </th>
@@ -863,7 +860,7 @@ export const TeacherScreen: React.FC = () => {
                       <th className="py-2.5 px-3 font-semibold text-right min-w-[170px]">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-800/60">
+                  <tbody className="divide-y divide-paper-edge">
                     {world?.misconceptions.map((mis) => {
                       let severeCount = 0;
                       let activeCount = 0;
@@ -876,12 +873,12 @@ export const TeacherScreen: React.FC = () => {
                       const isDeploying = deployingMisId === mis.id;
 
                       return (
-                        <tr key={mis.id} className="hover:bg-slate-800/30 transition-colors">
+                        <tr key={mis.id} className="hover:bg-paper-deep transition-colors">
                           <td className="py-2.5 px-3">
-                            <span className="font-bold text-amber-400 mr-2 text-[11px]">
+                            <span className="font-bold text-sun-deep mr-2 text-[11px]">
                               {mis.id.toUpperCase()}
                             </span>
-                            <span className="text-slate-200">{mis.label}</span>
+                            <span className="text-ink">{mis.label}</span>
                           </td>
 
                           {allStudents.map((st) => {
@@ -889,17 +886,17 @@ export const TeacherScreen: React.FC = () => {
                             const isCurrentCol = st.id === selectedStudentId;
 
                             let cellBadge = 'Untested';
-                            let cellClass = 'bg-slate-900/60 text-slate-500 border-slate-800';
+                            let cellClass = 'bg-paper text-ink-soft border-paper-edge';
 
                             if (status === 'overcome') {
                               cellBadge = 'Overcome ✓';
-                              cellClass = 'bg-emerald-950/70 text-emerald-300 border-emerald-600/60 font-bold';
+                              cellClass = 'bg-leaf-soft text-leaf-deep border-leaf/40 font-bold';
                             } else if (status === 'severe') {
                               cellBadge = `Severe ${Math.round(strength * 100)}%`;
-                              cellClass = 'bg-rose-950/90 text-rose-200 border-rose-500/80 font-extrabold ring-1 ring-rose-500/30';
+                              cellClass = 'bg-berry-soft text-berry-deep border-berry/50 font-extrabold ring-1 ring-berry/40';
                             } else if (status === 'active') {
                               cellBadge = `Active ${Math.round(strength * 100)}%`;
-                              cellClass = 'bg-amber-950/70 text-amber-300 border-amber-600/60 font-bold';
+                              cellClass = 'bg-sun-soft text-sun-deep border-sun font-bold';
                             }
 
                             return (
@@ -909,7 +906,7 @@ export const TeacherScreen: React.FC = () => {
                                   onClick={() => setSelectedCell({ student: st, misconception: mis, status, strength })}
                                   data-testid={`cell-${st.id}-${mis.id}`}
                                   className={`w-full py-1.5 px-1 rounded-lg border text-[11px] transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-xs ${cellClass} ${
-                                    isCurrentCol ? 'ring-1 ring-indigo-400' : ''
+                                    isCurrentCol ? 'ring-1 ring-sun' : ''
                                   }`}
                                   title={`Click to view ${st.name}'s thought processes for ${mis.id.toUpperCase()}`}
                                 >
@@ -923,10 +920,10 @@ export const TeacherScreen: React.FC = () => {
                             <span
                               className={`inline-block px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
                                 severeCount > 0
-                                  ? 'bg-rose-950 text-rose-300 border border-rose-800'
+                                  ? 'bg-berry-soft text-berry-deep border border-berry/50'
                                   : activeCount > 0
-                                  ? 'bg-amber-950 text-amber-300 border border-amber-800'
-                                  : 'bg-emerald-950 text-emerald-400 border border-emerald-800'
+                                  ? 'bg-sun-soft text-sun-deep border border-sun'
+                                  : 'bg-leaf-soft text-leaf-deep border border-leaf/40'
                               }`}
                             >
                               {severeCount > 0 ? `${severeCount} Severe` : activeCount > 0 ? `${activeCount} Active` : 'Clear'}
@@ -940,11 +937,10 @@ export const TeacherScreen: React.FC = () => {
                                 type="button"
                                 onClick={() => handleGenerateIntervention('misconception', mis.id)}
                                 data-testid={`intervention-mis-${mis.id}`}
-                                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-indigo-300 rounded-xl text-[11px] font-bold border border-slate-700 transition-all shadow-xs"
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-paper-deep hover:bg-paper-edge text-leaf-deep rounded-xl text-[11px] font-bold border border-paper-edge transition-all shadow-xs"
                                 title="Generate targeted mini-lesson & 5-minute activity for this misconception"
                               >
-                                <Sparkles className="w-3 h-3 text-indigo-400" />
-                                <span>Intervention</span>
+                                <span>Lesson plan</span>
                               </button>
 
                               <button
@@ -952,13 +948,9 @@ export const TeacherScreen: React.FC = () => {
                                 onClick={() => handleDeployQuest(mis.id)}
                                 disabled={isDeploying}
                                 data-testid={`deploy-quest-${mis.id}`}
-                                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-purple-700 hover:bg-purple-600 disabled:opacity-50 text-white rounded-xl text-[11px] font-bold transition-all shadow-xs"
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-sun hover:brightness-105 disabled:opacity-50 text-ink rounded-xl text-[11px] font-bold transition-all shadow-xs"
                               >
-                                {isDeploying ? (
-                                  <RefreshCw className="w-3 h-3 animate-spin" />
-                                ) : (
-                                  <Sparkles className="w-3 h-3 text-purple-300" />
-                                )}
+                                {isDeploying && <RefreshCw className="w-3 h-3 animate-spin" />}
                                 <span>Deploy Quest</span>
                               </button>
                             </div>
@@ -972,26 +964,26 @@ export const TeacherScreen: React.FC = () => {
             </div>
 
             {/* Selected Student Metrics & Calibration Dashboard */}
-            <div className="p-6 rounded-3xl bg-slate-900/80 border border-slate-800 shadow-xl space-y-5">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-4">
+            <div className="p-6 rounded-3xl bg-paper border border-paper-edge shadow-[0_3px_0_var(--color-paper-edge)] space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-paper-edge pb-4">
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="text-base sm:text-lg font-bold text-white">
+                    <span className="text-base sm:text-lg font-bold text-ink">
                       {selectedStudent.name}
                     </span>
                     {!selectedStudent.isLiveStudent && (
-                      <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-md bg-slate-800 text-slate-400 border border-slate-700">
-                        Sample Data
+                      <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-md bg-paper-deep text-ink-soft border border-paper-edge">
+                        Sample
                       </span>
                     )}
                     {selectedStudent.isLiveStudent && (
-                      <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-md bg-blue-900 text-blue-200 border border-blue-600 font-bold">
+                      <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-md bg-paper-deep text-leaf-deep border border-paper-edge font-bold">
                         Live Session
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-slate-400">
-                    Calibration ratio, accuracy score, and cognitive thought-process audits
+                  <p className="text-xs text-ink-soft">
+                    How sure they were, how often they were right, and what they were thinking
                   </p>
                 </div>
 
@@ -999,63 +991,62 @@ export const TeacherScreen: React.FC = () => {
                   type="button"
                   onClick={() => handleGenerateIntervention('student', selectedStudent.id)}
                   data-testid="generate-student-intervention-btn"
-                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-sun hover:brightness-105 text-ink rounded-xl text-xs font-bold transition-all shadow-sm"
                 >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>Generate Intervention for {selectedStudent.name.split(' ')[0]}</span>
+                  <span>Lesson plan for {selectedStudent.name.split(' ')[0]}</span>
                 </button>
               </div>
 
               {/* 4 Metrics Cards */}
               <div className="grid grid-cols-1 sm:grid-cols-4 gap-3.5">
-                <div className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800 space-y-1">
-                  <span className="text-xs text-slate-400 flex items-center gap-1.5">
-                    <Target className="w-3.5 h-3.5 text-blue-400" />
+                <div className="p-4 rounded-2xl bg-paper-deep border border-paper-edge space-y-1">
+                  <span className="text-xs text-ink-soft flex items-center gap-1.5">
+                    <Target className="w-3.5 h-3.5 text-leaf-deep" />
                     Accuracy
                   </span>
-                  <p className="text-lg font-extrabold text-white">{getStudentAccuracy(selectedStudent)}</p>
-                  <span className="text-[11px] text-slate-500 block">Total questions mastered</span>
+                  <p className="text-lg font-extrabold text-ink">{getStudentAccuracy(selectedStudent)}</p>
+                  <span className="text-[11px] text-ink-soft block">Answered right</span>
                 </div>
 
-                <div className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800 space-y-1">
-                  <span className="text-xs text-slate-400 flex items-center gap-1.5">
-                    <Award className="w-3.5 h-3.5 text-amber-400" />
+                <div className="p-4 rounded-2xl bg-paper-deep border border-paper-edge space-y-1">
+                  <span className="text-xs text-ink-soft flex items-center gap-1.5">
+                    <Award className="w-3.5 h-3.5 text-sun-deep" />
                     Calibration
                   </span>
-                  <p className="text-lg font-extrabold text-amber-300">{getStudentCalibration(selectedStudent)}</p>
-                  <span className="text-[11px] text-slate-500 block">"Very sure" answers that were correct</span>
+                  <p className="text-lg font-extrabold text-sun-deep">{getStudentCalibration(selectedStudent)}</p>
+                  <span className="text-[11px] text-ink-soft block">"Very sure" answers that were correct</span>
                 </div>
 
-                <div className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800 space-y-1">
-                  <span className="text-xs text-slate-400 flex items-center gap-1.5">
-                    <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
-                    Active Misconception
+                <div className="p-4 rounded-2xl bg-paper-deep border border-paper-edge space-y-1">
+                  <span className="text-xs text-ink-soft flex items-center gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5 text-berry-deep" />
+                    Current mix-up
                   </span>
-                  <p className="text-sm font-bold truncate text-white">
+                  <p className="text-sm font-bold truncate text-ink">
                     {selectedStudent.activeMisconceptionId ? (
-                      <span className="text-rose-400">
+                      <span className="text-berry-deep">
                         {selectedStudent.activeMisconceptionId.toUpperCase()}:{' '}
                         {world?.misconceptions.find((m) => m.id === selectedStudent.activeMisconceptionId)?.label || 'Detected'}
                       </span>
                     ) : (
-                      <span className="text-emerald-400 font-bold">None (Clear)</span>
+                      <span className="text-leaf-deep font-bold">None (Clear)</span>
                     )}
                   </p>
-                  <span className="text-[11px] text-slate-500 block">Strongest idea &gt; 30% resistance</span>
+                  <span className="text-[11px] text-ink-soft block">Their strongest mix-up right now</span>
                 </div>
 
-                <div className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800 space-y-1">
-                  <span className="text-xs text-slate-400 flex items-center gap-1.5">
-                    <BrainCircuit className="w-3.5 h-3.5 text-indigo-400" />
-                    Tutor Prediction Score
+                <div className="p-4 rounded-2xl bg-paper-deep border border-paper-edge space-y-1">
+                  <span className="text-xs text-ink-soft flex items-center gap-1.5">
+                    <BrainCircuit className="w-3.5 h-3.5 text-leaf-deep" />
+                    Byte's guesses
                   </span>
                   <div className="flex items-baseline gap-2">
-                    <span className="text-lg font-extrabold text-indigo-200">
+                    <span className="text-lg font-extrabold text-leaf-deep">
                       {selectedStudent.predictionStats.exact + selectedStudent.predictionStats.direction} /{' '}
                       {selectedStudent.predictionStats.exact + selectedStudent.predictionStats.direction + selectedStudent.predictionStats.miss}
                     </span>
                   </div>
-                  <div className="text-[10px] text-slate-400 flex gap-2">
+                  <div className="text-[10px] text-ink-soft flex gap-2">
                     <span>{selectedStudent.predictionStats.exact} exact</span>
                     <span>•</span>
                     <span>{selectedStudent.predictionStats.direction} direction</span>
@@ -1068,15 +1059,15 @@ export const TeacherScreen: React.FC = () => {
               {/* "Predicted vs Actual" Log */}
               <div className="space-y-3 pt-2">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-                    <BrainCircuit className="w-4 h-4 text-indigo-400" />
-                    "Predicted vs Actual" Cognitive Log ({selectedStudent.attempts.length})
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-ink-soft flex items-center gap-1.5">
+                    <BrainCircuit className="w-4 h-4 text-leaf-deep" />
+                    Byte's guess vs what happened ({selectedStudent.attempts.length})
                   </h3>
-                  <span className="text-[11px] text-slate-500">Latest attempt at top</span>
+                  <span className="text-[11px] text-ink-soft">Latest attempt at top</span>
                 </div>
 
                 {selectedStudent.attempts.length === 0 ? (
-                  <div className="py-8 text-center text-xs text-slate-500 border border-dashed border-slate-800 rounded-2xl">
+                  <div className="py-8 text-center text-xs text-ink-soft border border-dashed border-paper-edge rounded-2xl">
                     No questions attempted yet by {selectedStudent.name}.
                   </div>
                 ) : (
@@ -1084,15 +1075,15 @@ export const TeacherScreen: React.FC = () => {
                     {selectedStudent.attempts.map((att, idx) => {
                       const hit = att.predictionHit;
                       return (
-                        <div key={idx} className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800 text-xs space-y-2">
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 border-b border-slate-800/80 pb-2">
-                            <span className="font-bold text-white text-sm">{att.question}</span>
+                        <div key={idx} className="p-4 rounded-2xl bg-paper-deep border border-paper-edge text-xs space-y-2">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 border-b border-paper-edge pb-2">
+                            <span className="font-bold text-ink text-sm">{att.question}</span>
                             <div className="flex items-center gap-2 shrink-0">
                               <span
                                 className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
                                   att.correct
-                                    ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
-                                    : 'bg-rose-950 text-rose-300 border border-rose-800'
+                                    ? 'bg-leaf-soft text-leaf-deep border border-leaf/40'
+                                    : 'bg-berry-soft text-berry-deep border border-berry/50'
                                 }`}
                               >
                                 {att.correct ? <>✓ Correct</> : <>✗ Withered</>}
@@ -1101,60 +1092,53 @@ export const TeacherScreen: React.FC = () => {
                                 <span
                                   className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
                                     hit === 'exact'
-                                      ? 'bg-indigo-950 text-indigo-300 border border-indigo-700'
+                                      ? 'bg-paper-deep text-leaf-deep border border-paper-edge'
                                       : hit === 'direction'
-                                      ? 'bg-sky-950 text-sky-300 border border-sky-800'
-                                      : 'bg-slate-800 text-slate-400 border border-slate-700'
+                                      ? 'bg-paper-deep text-leaf-deep border border-paper-edge'
+                                      : 'bg-paper-deep text-ink-soft border border-paper-edge'
                                   }`}
                                 >
-                                  {hit === 'exact' && 'Prediction: exact ✓'}
-                                  {hit === 'direction' && 'Prediction: right direction ✓'}
-                                  {hit === 'miss' && 'Prediction: missed ✗'}
+                                  {hit === 'exact' && 'Byte guessed it exactly'}
+                                  {hit === 'direction' && 'Byte was close'}
+                                  {hit === 'miss' && 'Byte guessed wrong'}
                                 </span>
                               )}
                             </div>
                           </div>
 
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
-                            <div className="p-2.5 rounded-xl bg-indigo-950/30 border border-indigo-800/30 space-y-1">
-                              <span className="text-[10px] uppercase font-bold text-indigo-400 block">
-                                Tutor Prediction:
+                            <div className="p-2.5 rounded-xl bg-paper-deep border border-paper-edge space-y-1">
+                              <span className="text-[10px] uppercase font-bold text-leaf-deep block">
+                                Byte guessed:
                               </span>
                               {att.prediction ? (
-                                <div className="text-[11px] text-indigo-200">
-                                  <p className="font-semibold text-white">
+                                <div className="text-[11px] text-leaf-deep">
+                                  <p className="font-semibold text-ink">
                                     {att.prediction.pCorrect >= 0.5
                                       ? `Predicted Correct (${Math.round(att.prediction.pCorrect * 100)}%)`
                                       : `Predicted Distractor: "${world?.trees.find((t) => t.id === att.treeId)?.choices[att.prediction.predictedChoice] || 'Choice'}"`}
                                   </p>
-                                  <p className="text-indigo-300/80 italic mt-0.5">"{att.prediction.why}"</p>
+                                  <p className="text-leaf-deep italic mt-0.5">"{att.prediction.why}"</p>
                                 </div>
                               ) : (
-                                <div className="text-[11px] text-indigo-200">
-                                  <p className="font-semibold text-white">
-                                    Predicted from common grade-level misconceptions
-                                  </p>
-                                  <p className="text-indigo-300/80 italic mt-0.5">
-                                    "Predicted student may default to intuitive numerator comparison or whole-number addition before calibration."
-                                  </p>
-                                </div>
+                                <p className="text-[11px] font-semibold text-ink-soft">Byte didn't guess this one.</p>
                               )}
                             </div>
 
-                            <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 space-y-1">
-                              <span className="text-[10px] uppercase font-bold text-slate-400 block">
-                                Actual Response:
+                            <div className="p-2.5 rounded-xl bg-paper border border-paper-edge space-y-1">
+                              <span className="text-[10px] uppercase font-bold text-ink-soft block">
+                                What happened:
                               </span>
-                              <div className="text-[11px] text-slate-200">
-                                <p>Chosen: <strong className="text-white font-semibold">"{att.choice}"</strong></p>
-                                <p className="text-slate-400">Confidence: <strong className="text-amber-300">{att.confidence}</strong></p>
+                              <div className="text-[11px] text-ink">
+                                <p>Chosen: <strong className="text-ink font-semibold">"{att.choice}"</strong></p>
+                                <p className="text-ink-soft">Confidence: <strong className="text-sun-deep">{att.confidence}</strong></p>
                               </div>
                             </div>
                           </div>
 
                           {att.thoughtProcess && (
-                            <div className="p-2.5 rounded-xl bg-amber-950/20 border border-amber-800/40 text-[11px] text-amber-200">
-                              <strong>Diagnosed Thought Process:</strong> "{att.thoughtProcess}"
+                            <div className="p-2.5 rounded-xl bg-sun-soft border border-sun text-[11px] text-sun-deep">
+                              <strong>What they were thinking:</strong> "{att.thoughtProcess}"
                             </div>
                           )}
                         </div>
@@ -1169,27 +1153,27 @@ export const TeacherScreen: React.FC = () => {
 
         {/* Tab 2: Live Flags Feed */}
         {activeTab === 'flags' && (
-          <div className="p-6 rounded-3xl bg-slate-900/80 border border-slate-800 shadow-xl space-y-5">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
+          <div className="p-6 rounded-3xl bg-paper border border-paper-edge shadow-[0_3px_0_var(--color-paper-edge)] space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-paper-edge pb-4">
               <div>
-                <h2 className="text-base font-bold text-white flex items-center gap-2">
-                  <Flag className="w-5 h-5 text-amber-400" />
-                  Live Flags Feed
+                <h2 className="text-base font-bold text-ink flex items-center gap-2">
+                  <Flag className="w-5 h-5 text-sun-deep" />
+                  Just flagged
                 </h2>
-                <p className="text-xs text-slate-400">
+                <p className="text-xs text-ink-soft">
                   Live stream of student thought processes diagnosed today. Filterable by misconception.
                 </p>
               </div>
 
-              <span className="text-xs font-semibold px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 w-fit">
+              <span className="text-xs font-semibold px-3 py-1 rounded-full bg-sun text-sun-deep border border-sun w-fit">
                 {filteredFlags.length} Events Displayed
               </span>
             </div>
 
             {/* Misconception Filter Pills */}
             <div className="space-y-2">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                <Filter className="w-3.5 h-3.5 text-indigo-400" />
+              <span className="text-[11px] font-bold text-ink-soft uppercase tracking-wider flex items-center gap-1.5">
+                <Filter className="w-3.5 h-3.5 text-leaf-deep" />
                 Filter by Misconception:
               </span>
               <div className="flex flex-wrap gap-2">
@@ -1199,8 +1183,8 @@ export const TeacherScreen: React.FC = () => {
                   onClick={() => setSelectedFlagFilter('all')}
                   className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
                     selectedFlagFilter === 'all'
-                      ? 'bg-indigo-600 text-white border-indigo-500 shadow-sm'
-                      : 'bg-slate-800/80 text-slate-300 border-slate-700 hover:bg-slate-750'
+                      ? 'bg-sun text-ink border-paper-edge shadow-sm'
+                      : 'bg-paper-deep text-ink-soft border-paper-edge hover:bg-paper-edge'
                   }`}
                 >
                   All Misconceptions ({allFlags.length})
@@ -1216,8 +1200,8 @@ export const TeacherScreen: React.FC = () => {
                       onClick={() => setSelectedFlagFilter(mis.id)}
                       className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border flex items-center gap-1.5 ${
                         isSelected
-                          ? 'bg-indigo-600 text-white border-indigo-500 shadow-sm'
-                          : 'bg-slate-800/80 text-slate-300 border-slate-700 hover:bg-slate-750'
+                          ? 'bg-sun text-ink border-paper-edge shadow-sm'
+                          : 'bg-paper-deep text-ink-soft border-paper-edge hover:bg-paper-edge'
                       }`}
                     >
                       <span>{mis.id.toUpperCase()}</span>
@@ -1229,20 +1213,20 @@ export const TeacherScreen: React.FC = () => {
             </div>
 
             {filteredFlags.length === 0 ? (
-              <div className="py-12 text-center text-xs text-slate-500 border border-dashed border-slate-800 rounded-2xl">
-                No thought processes found matching this filter. When students answer incorrectly, their diagnosed reasoning will stream here!
+              <div className="py-12 text-center text-xs text-ink-soft border border-dashed border-paper-edge rounded-2xl">
+                Nothing here yet. When a student gets one wrong, what they were thinking shows up here.
               </div>
             ) : (
               <div className="space-y-3">
                 {filteredFlags.map((flag) => (
                   <div
                     key={flag.id}
-                    className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 hover:border-slate-700 transition-all space-y-2.5"
+                    className="p-4 rounded-2xl bg-paper-deep border border-paper-edge hover:border-paper-edge transition-all space-y-2.5"
                   >
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
                       <div className="flex items-center gap-2">
-                        <span className="font-bold text-sm text-white">{flag.studentName || 'Student'}</span>
-                        <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-amber-950 text-amber-300 border border-amber-800">
+                        <span className="font-bold text-sm text-ink">{flag.studentName || 'Student'}</span>
+                        <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-sun-soft text-sun-deep border border-sun">
                           {flag.misconceptionId?.toUpperCase() || 'Misconception'}
                         </span>
                       </div>
@@ -1251,10 +1235,10 @@ export const TeacherScreen: React.FC = () => {
                         <span
                           className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${
                             flag.confirmed === 'yes'
-                              ? 'bg-emerald-950 text-emerald-300 border-emerald-800'
+                              ? 'bg-leaf-soft text-leaf-deep border-leaf/40'
                               : flag.confirmed === 'no'
-                              ? 'bg-sky-950 text-sky-300 border-sky-800'
-                              : 'bg-slate-800 text-slate-400 border-slate-700'
+                              ? 'bg-paper-deep text-leaf-deep border-paper-edge'
+                              : 'bg-paper-deep text-ink-soft border-paper-edge'
                           }`}
                         >
                           {flag.confirmed === 'yes' && 'Confirmed: Yes, that’s it'}
@@ -1264,20 +1248,20 @@ export const TeacherScreen: React.FC = () => {
                       </div>
                     </div>
 
-                    <div className="text-xs text-slate-300">
-                      <span className="text-slate-500 font-semibold">Question:</span> "{flag.question}"
+                    <div className="text-xs text-ink-soft">
+                      <span className="text-ink-soft font-semibold">Question:</span> "{flag.question}"
                     </div>
 
-                    <div className="p-3 rounded-xl bg-amber-950/30 border border-amber-800/40 text-xs text-amber-200">
-                      <span className="font-bold text-amber-300 block mb-0.5">Diagnosed Reasoning:</span>
+                    <div className="p-3 rounded-xl bg-sun-soft border border-sun text-xs text-sun-deep">
+                      <span className="font-bold text-sun-deep block mb-0.5">Diagnosed Reasoning:</span>
                       "{flag.thoughtProcess}"
                     </div>
 
                     {flag.studentWords && (
-                      <div className="p-2.5 rounded-xl bg-sky-950/30 border border-sky-800/40 text-xs text-sky-200 flex items-start gap-2">
-                        <MessageSquare className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
+                      <div className="p-2.5 rounded-xl bg-paper-deep border border-paper-edge text-xs text-leaf-deep flex items-start gap-2">
+                        <MessageSquare className="w-4 h-4 text-leaf-deep shrink-0 mt-0.5" />
                         <div>
-                          <strong className="text-sky-300">Student's own words:</strong> "{flag.studentWords}"
+                          <strong className="text-leaf-deep">Student's own words:</strong> "{flag.studentWords}"
                         </div>
                       </div>
                     )}
@@ -1291,48 +1275,48 @@ export const TeacherScreen: React.FC = () => {
 
       {/* Cell Detail Modal (shows thought processes behind clicked matrix cell) */}
       {selectedCell && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-paper-deep">
           <div
             role="dialog"
             aria-labelledby="cell-detail-title"
-            className="w-full max-w-lg bg-slate-900 border border-slate-700 rounded-3xl shadow-2xl p-6 text-white space-y-4 max-h-[85vh] overflow-y-auto animate-in zoom-in-95 duration-200"
+            className="w-full max-w-lg bg-paper border border-paper-edge rounded-3xl shadow-[0_3px_0_var(--color-paper-edge)] p-6 text-ink space-y-4 max-h-[85vh] overflow-y-auto rise-in"
           >
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+            <div className="flex items-center justify-between border-b border-paper-edge pb-3">
               <div>
-                <span className="text-[11px] font-bold text-amber-400 uppercase tracking-wide">
-                  Misconception Audit Cell
+                <span className="text-[11px] font-bold text-sun-deep uppercase tracking-wide">
+                  One student, one mix-up
                 </span>
-                <h3 id="cell-detail-title" className="text-base font-bold text-white">
+                <h3 id="cell-detail-title" className="text-base font-bold text-ink">
                   {selectedCell.student.name} × {selectedCell.misconception.id.toUpperCase()}
                 </h3>
               </div>
               <button
                 onClick={() => setSelectedCell(null)}
                 data-testid="close-cell-modal-btn"
-                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+                className="p-1 rounded-lg text-ink-soft hover:text-ink hover:bg-paper-deep"
               >
                 <XCircle className="w-5 h-5" />
               </button>
             </div>
 
             <div className="space-y-2">
-              <span className="text-xs text-slate-400 font-semibold block">Misconception Description:</span>
-              <p className="text-xs text-slate-200 bg-slate-950/60 p-3 rounded-xl border border-slate-800">
+              <span className="text-xs text-ink-soft font-semibold block">Misconception Description:</span>
+              <p className="text-xs text-ink bg-paper-deep p-3 rounded-xl border border-paper-edge">
                 {selectedCell.misconception.label}
               </p>
             </div>
 
-            <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950/60 border border-slate-800 text-xs">
-              <span className="text-slate-400">Current Status:</span>
+            <div className="flex items-center justify-between p-3 rounded-xl bg-paper-deep border border-paper-edge text-xs">
+              <span className="text-ink-soft">Current Status:</span>
               <span
                 className={`font-bold px-2.5 py-0.5 rounded-full border ${
                   selectedCell.status === 'overcome'
-                    ? 'bg-emerald-950 text-emerald-300 border-emerald-800'
+                    ? 'bg-leaf-soft text-leaf-deep border-leaf/40'
                     : selectedCell.status === 'severe'
-                    ? 'bg-rose-950 text-rose-300 border border-rose-800'
+                    ? 'bg-berry-soft text-berry-deep border border-berry/50'
                     : selectedCell.status === 'active'
-                    ? 'bg-amber-950 text-amber-300 border border-amber-800'
-                    : 'bg-slate-800 text-slate-400 border-slate-700'
+                    ? 'bg-sun-soft text-sun-deep border border-sun'
+                    : 'bg-paper-deep text-ink-soft border-paper-edge'
                 }`}
               >
                 {selectedCell.status.toUpperCase()} {selectedCell.strength > 0 ? `(${Math.round(selectedCell.strength * 100)}%)` : ''}
@@ -1340,21 +1324,21 @@ export const TeacherScreen: React.FC = () => {
             </div>
 
             <div className="space-y-2">
-              <span className="text-xs font-bold text-slate-300 block">
+              <span className="text-xs font-bold text-ink-soft block">
                 Observed Thought Processes:
               </span>
               {selectedCell.student.flags.filter((f) => f.misconceptionId === selectedCell.misconception.id).length === 0 ? (
-                <div className="p-3 rounded-xl bg-slate-950/50 border border-slate-800/80 text-xs text-slate-400 italic">
+                <div className="p-3 rounded-xl bg-paper-deep border border-paper-edge text-xs text-ink-soft italic">
                   No specific thought-process flags recorded for this misconception yet.
                 </div>
               ) : (
                 selectedCell.student.flags
                   .filter((f) => f.misconceptionId === selectedCell.misconception.id)
                   .map((f, i) => (
-                    <div key={i} className="p-3 rounded-xl bg-amber-950/20 border border-amber-800/40 text-xs space-y-1">
-                      <p className="text-amber-200 italic font-medium">"{f.thoughtProcess}"</p>
+                    <div key={i} className="p-3 rounded-xl bg-sun-soft border border-sun text-xs space-y-1">
+                      <p className="text-sun-deep italic font-medium">"{f.thoughtProcess}"</p>
                       {f.studentWords && (
-                        <p className="text-sky-300 text-[11px]">
+                        <p className="text-leaf-deep text-[11px]">
                           <strong>Student explained:</strong> "{f.studentWords}"
                         </p>
                       )}
@@ -1363,7 +1347,7 @@ export const TeacherScreen: React.FC = () => {
               )}
             </div>
 
-            <div className="pt-2 flex justify-end gap-2 border-t border-slate-800">
+            <div className="pt-2 flex justify-end gap-2 border-t border-paper-edge">
               <button
                 type="button"
                 onClick={() => {
@@ -1372,9 +1356,8 @@ export const TeacherScreen: React.FC = () => {
                   handleGenerateIntervention('student', st.id);
                 }}
                 data-testid="generate-cell-intervention-btn"
-                className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-sun hover:brightness-105 text-ink rounded-xl text-xs font-bold transition-all shadow-sm"
               >
-                <Sparkles className="w-3.5 h-3.5" />
                 <span>Generate Intervention</span>
               </button>
             </div>
@@ -1384,23 +1367,22 @@ export const TeacherScreen: React.FC = () => {
 
       {/* Intervention Generator Modal */}
       {showInterventionModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-paper-deep">
           <div
             role="dialog"
             aria-labelledby="intervention-modal-title"
-            className="w-full max-w-2xl bg-slate-900 border border-slate-700 rounded-3xl shadow-2xl p-6 text-white space-y-5 max-h-[85vh] overflow-y-auto animate-in zoom-in-95 duration-200"
+            className="w-full max-w-2xl bg-paper border border-paper-edge rounded-3xl shadow-[0_3px_0_var(--color-paper-edge)] p-6 text-ink space-y-5 max-h-[85vh] overflow-y-auto rise-in"
           >
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+            <div className="flex items-center justify-between border-b border-paper-edge pb-3">
               <div className="flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-indigo-400" />
                 <h3 id="intervention-modal-title" className="text-lg font-bold">
-                  Targeted Pedagogical Intervention
+                  A short lesson plan
                 </h3>
               </div>
               <button
                 onClick={() => setShowInterventionModal(false)}
                 data-testid="close-intervention-modal-btn"
-                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+                className="p-1 rounded-lg text-ink-soft hover:text-ink hover:bg-paper-deep"
               >
                 <XCircle className="w-5 h-5" />
               </button>
@@ -1408,25 +1390,25 @@ export const TeacherScreen: React.FC = () => {
 
             {isLoadingIntervention ? (
               <div className="py-16 flex flex-col items-center justify-center text-center space-y-3">
-                <RefreshCw className="w-8 h-8 text-indigo-400 animate-spin" />
-                <p className="text-sm font-semibold text-slate-200">
-                  Professor Byte is crafting a tailored lesson plan & 5-minute activity…
+                <RefreshCw className="w-8 h-8 text-leaf-deep animate-spin" />
+                <p className="text-sm font-semibold text-ink">
+                  Byte is writing a short lesson plan…
                 </p>
-                <p className="text-xs text-slate-500">
-                  Grounding recommendations in the exact cognitive misconceptions and quotes observed.
+                <p className="text-xs text-ink-soft">
+                  It uses what your students actually said.
                 </p>
               </div>
             ) : interventionData ? (
               <div className="space-y-4">
-                <div className="p-4 rounded-2xl bg-indigo-950/60 border border-indigo-700/60 space-y-1">
-                  <h4 className="text-sm font-extrabold text-white">{interventionData.title}</h4>
-                  <p className="text-xs text-indigo-200 italic">{interventionData.pedagogicalInsight}</p>
+                <div className="p-4 rounded-2xl bg-paper-deep border border-paper-edge space-y-1">
+                  <h4 className="text-sm font-extrabold text-ink">{interventionData.title}</h4>
+                  <p className="text-xs text-leaf-deep italic">{interventionData.pedagogicalInsight}</p>
                 </div>
 
                 {/* 3-Bullet Mini-Lesson Plan */}
                 <div className="space-y-2">
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                    <BookOpen className="w-3.5 h-3.5 text-indigo-400" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-ink-soft flex items-center gap-1.5">
+                    <BookOpen className="w-3.5 h-3.5 text-leaf-deep" />
                     3-Bullet Mini-Lesson Plan
                   </span>
                   <div className="space-y-2">
@@ -1434,9 +1416,9 @@ export const TeacherScreen: React.FC = () => {
                       <div
                         key={idx}
                         data-testid="intervention-bullets"
-                        className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 text-xs text-slate-200 flex items-start gap-2.5"
+                        className="p-3 rounded-xl bg-paper-deep border border-paper-edge text-xs text-ink flex items-start gap-2.5"
                       >
-                        <span className="w-5 h-5 rounded-full bg-indigo-500/20 text-indigo-300 font-bold flex items-center justify-center shrink-0 border border-indigo-500/30">
+                        <span className="w-5 h-5 rounded-full bg-sun text-leaf-deep font-bold flex items-center justify-center shrink-0 border border-paper-edge">
                           {idx + 1}
                         </span>
                         <span className="leading-relaxed">{bullet}</span>
@@ -1446,9 +1428,8 @@ export const TeacherScreen: React.FC = () => {
                 </div>
 
                 {/* 5-Minute Offline Activity */}
-                <div className="p-4 rounded-2xl bg-emerald-950/40 border border-emerald-800/60 text-xs text-emerald-200 space-y-1.5">
-                  <strong className="text-emerald-300 flex items-center gap-1.5">
-                    <Sparkles className="w-4 h-4" />
+                <div className="p-4 rounded-2xl bg-leaf-soft border border-leaf/40 text-xs text-leaf-deep space-y-1.5">
+                  <strong className="text-leaf-deep flex items-center gap-1.5">
                     5-Minute Concrete Offline Activity
                   </strong>
                   <p data-testid="intervention-activity" className="leading-relaxed font-medium">
@@ -1457,15 +1438,15 @@ export const TeacherScreen: React.FC = () => {
                 </div>
 
                 {/* Action Bar */}
-                <div className="flex items-center justify-between pt-3 border-t border-slate-800">
-                  <span className="text-xs text-slate-400">
+                <div className="flex items-center justify-between pt-3 border-t border-paper-edge">
+                  <span className="text-xs text-ink-soft">
                     Ready to copy into your lesson plan.
                   </span>
                   <button
                     type="button"
                     onClick={handleCopyIntervention}
                     data-testid="copy-intervention-btn"
-                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all shadow-md"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-leaf hover:brightness-105 text-paper rounded-xl text-xs font-bold transition-all shadow-md"
                   >
                     {copiedIntervention ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                     <span>{copiedIntervention ? 'Copied Plan!' : 'Copy Plan'}</span>
@@ -1479,23 +1460,23 @@ export const TeacherScreen: React.FC = () => {
 
       {/* End of session rundown report modal */}
       {showRundownModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-paper-deep">
           <div
             role="dialog"
             aria-labelledby="rundown-modal-title"
-            className="w-full max-w-3xl bg-slate-900 border border-slate-700 rounded-3xl shadow-2xl p-6 text-white space-y-5 max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-200"
+            className="w-full max-w-3xl bg-paper border border-paper-edge rounded-3xl shadow-[0_3px_0_var(--color-paper-edge)] p-6 text-ink space-y-5 max-h-[90vh] overflow-y-auto rise-in"
           >
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+            <div className="flex items-center justify-between border-b border-paper-edge pb-3">
               <div className="flex items-center gap-2">
-                <FileText className="w-5 h-5 text-indigo-400" />
+                <FileText className="w-5 h-5 text-leaf-deep" />
                 <h3 id="rundown-modal-title" className="text-lg font-bold">
-                  End of Session Pedagogical Rundown
+                  What to reteach
                 </h3>
               </div>
               <button
                 onClick={() => setShowRundownModal(false)}
                 data-testid="close-rundown-btn"
-                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+                className="p-1 rounded-lg text-ink-soft hover:text-ink hover:bg-paper-deep"
               >
                 <XCircle className="w-5 h-5" />
               </button>
@@ -1503,28 +1484,28 @@ export const TeacherScreen: React.FC = () => {
 
             {isLoadingRundown ? (
               <div className="py-16 flex flex-col items-center justify-center text-center space-y-3">
-                <RefreshCw className="w-8 h-8 text-indigo-400 animate-spin" />
-                <p className="text-sm font-semibold text-slate-200">
-                  Professor Byte is analyzing all class attempts and thought-process records…
+                <RefreshCw className="w-8 h-8 text-leaf-deep animate-spin" />
+                <p className="text-sm font-semibold text-ink">
+                  Byte is reading today's answers…
                 </p>
-                <p className="text-xs text-slate-500">
-                  Synthesizing top misconceptions, quoting student logic, and drafting 5-minute reteach activities.
+                <p className="text-xs text-ink-soft">
+                  Finding the biggest mix-ups, with a 5-minute activity for each.
                 </p>
               </div>
             ) : rundownError && !rundownData ? (
               <div className="py-12 flex flex-col items-center justify-center text-center space-y-4">
-                <div className="w-12 h-12 rounded-2xl bg-rose-500/20 text-rose-400 flex items-center justify-center">
+                <div className="w-12 h-12 rounded-2xl bg-berry text-berry-deep flex items-center justify-center">
                   <AlertCircle className="w-6 h-6" />
                 </div>
                 <div className="space-y-1 max-w-md">
-                  <p className="text-sm font-bold text-white">Could not generate AI rundown</p>
-                  <p className="text-xs text-slate-400">{rundownError}</p>
+                  <p className="text-sm font-bold text-ink">Could not generate AI rundown</p>
+                  <p className="text-xs text-ink-soft">{rundownError}</p>
                 </div>
                 <button
                   type="button"
                   onClick={handleGenerateRundown}
                   data-testid="retry-rundown-btn"
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-md transition-all cursor-pointer"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-sun hover:brightness-105 text-ink font-bold text-xs shadow-md transition-all cursor-pointer"
                 >
                   <RefreshCw className="w-4 h-4" />
                   <span>Try again</span>
@@ -1533,18 +1514,18 @@ export const TeacherScreen: React.FC = () => {
             ) : rundownData ? (
               <div className="space-y-5">
                 {/* Priority Order Executive Summary */}
-                <div className="p-4 rounded-2xl bg-indigo-950/60 border border-indigo-700/60 space-y-1">
-                  <span className="text-xs font-bold uppercase tracking-wider text-indigo-300">
-                    What to Reteach First (Executive Summary)
+                <div className="p-4 rounded-2xl bg-paper-deep border border-paper-edge space-y-1">
+                  <span className="text-xs font-bold uppercase tracking-wider text-leaf-deep">
+                    Reteach first
                   </span>
-                  <p className="text-sm font-medium text-slate-200 leading-relaxed">
+                  <p className="text-sm font-medium text-ink leading-relaxed">
                     {rundownData.priorityOrderSummary}
                   </p>
                 </div>
 
                 {/* Top 3 Misconceptions Breakdown */}
                 <div className="space-y-3">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-ink-soft">
                     Top 3 Class Misconceptions & 5-Minute Activities
                   </h4>
 
@@ -1552,33 +1533,32 @@ export const TeacherScreen: React.FC = () => {
                     {rundownData.topMisconceptions.map((item, idx) => (
                       <div
                         key={idx}
-                        className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2.5"
+                        className="p-4 rounded-2xl bg-paper-deep border border-paper-edge space-y-2.5"
                       >
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
-                            <span className="w-6 h-6 rounded-full bg-amber-500/20 text-amber-300 text-xs font-bold flex items-center justify-center border border-amber-500/40">
+                            <span className="w-6 h-6 rounded-full bg-sun text-sun-deep text-xs font-bold flex items-center justify-center border border-sun">
                               #{idx + 1}
                             </span>
-                            <span className="text-sm font-bold text-white">{item.label}</span>
+                            <span className="text-sm font-bold text-ink">{item.label}</span>
                           </div>
-                          <span className="text-[11px] text-amber-300 bg-amber-950/80 px-2 py-0.5 rounded-full border border-amber-800">
+                          <span className="text-[11px] text-sun-deep bg-sun-soft px-2 py-0.5 rounded-full border border-sun">
                             Affects: {item.affectedStudents.join(', ')}
                           </span>
                         </div>
 
-                        <div className="text-xs text-slate-300 space-y-1">
+                        <div className="text-xs text-ink-soft space-y-1">
                           <p>
-                            <strong className="text-slate-400">Typical Student Reasoning:</strong>{' '}
-                            <span className="italic font-medium text-amber-200">"{item.typicalReasoning}"</span>
+                            <strong className="text-ink-soft">Typical Student Reasoning:</strong>{' '}
+                            <span className="italic font-medium text-sun-deep">"{item.typicalReasoning}"</span>
                           </p>
                           <p>
-                            <strong className="text-slate-400">Why Address First:</strong> {item.whyReteach}
+                            <strong className="text-ink-soft">Why Address First:</strong> {item.whyReteach}
                           </p>
                         </div>
 
-                        <div className="p-3 rounded-xl bg-emerald-950/30 border border-emerald-800/40 text-xs text-emerald-200">
-                          <strong className="text-emerald-300 flex items-center gap-1.5 mb-0.5">
-                            <Sparkles className="w-3.5 h-3.5" />
+                        <div className="p-3 rounded-xl bg-leaf-soft border border-leaf/40 text-xs text-leaf-deep">
+                          <strong className="text-leaf-deep flex items-center gap-1.5 mb-0.5">
                             Concrete 5-Minute Reteach Activity:
                           </strong>
                           <span>{item.fiveMinuteActivity}</span>
@@ -1589,14 +1569,14 @@ export const TeacherScreen: React.FC = () => {
                 </div>
 
                 {/* Copy Action Bar */}
-                <div className="flex items-center justify-between pt-3 border-t border-slate-800">
-                  <span className="text-xs text-slate-400">
+                <div className="flex items-center justify-between pt-3 border-t border-paper-edge">
+                  <span className="text-xs text-ink-soft">
                     Ready to paste into lesson notes or LMS.
                   </span>
                   <button
                     onClick={handleCopyRundown}
                     data-testid="copy-rundown-btn"
-                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all shadow-md"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-leaf hover:brightness-105 text-paper rounded-xl text-xs font-bold transition-all shadow-md"
                   >
                     {copiedRundown ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                     <span>{copiedRundown ? 'Copied to Clipboard!' : 'Copy Full Report'}</span>

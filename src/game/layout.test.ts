@@ -9,6 +9,7 @@ import {
   placeBaseTrees,
   planForest,
   scatterDecorations,
+  scatterForest,
   signBoard,
   type ForestLayout,
   type Vec2,
@@ -190,5 +191,31 @@ describe('scatterDecorations', () => {
 
   it('gives the same scenery every time', () => {
     expect(scatterDecorations(layout, treeSpots)).toEqual(items);
+  });
+});
+
+describe('scatterForest', () => {
+  const { concepts, trees } = makeWorld(3, 5);
+  const layout = planForest(concepts);
+  const questionTrees = Object.values(placeBaseTrees(layout, trees));
+  const forest = scatterForest(layout, questionTrees);
+
+  it('surrounds the play area and fills the open meadow, without crowding anything you walk to', () => {
+    const inside = forest.filter((t) => inBounds(layout, t));
+    expect(inside.length).toBeGreaterThan(5);
+    expect(forest.length - inside.length).toBeGreaterThan(100);
+    for (const t of forest) {
+      expect(distanceToTrail(layout, t)).toBeGreaterThan(LAYOUT.TRAIL_HALF_WIDTH + 2.5);
+      for (const q of questionTrees) expect(dist(t, q)).toBeGreaterThan(LAYOUT.TREE_GAP - 1e-6);
+      for (const g of layout.groves) {
+        expect(dist(t, g.centre)).toBeGreaterThan(g.clearingRadius + 1);
+        expect(distToSegment(t, signBoard(g))).toBeGreaterThan(3);
+      }
+      expect(dist(t, layout.spawn)).toBeGreaterThan(5);
+    }
+  });
+
+  it('grows the same forest every time', () => {
+    expect(scatterForest(layout, questionTrees)).toEqual(forest);
   });
 });

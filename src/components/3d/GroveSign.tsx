@@ -19,10 +19,11 @@ const LEG_X = 1.95;
 const LEG_TOP = BOARD.y - BOARD.height / 2 + 0.05;
 
 export const GroveSign: React.FC<GroveSignProps> = ({ concept, position, rotationY = 0, isLocked, isComplete }) => {
-  const textColor = isLocked ? '#e2e8f0' : isComplete ? '#a7f3d0' : '#fef3c7';
-  const boardColor = isLocked ? '#475569' : isComplete ? '#065f46' : '#854d0e';
-  const outlineColor = isLocked ? '#0f172a' : isComplete ? '#022c22' : '#291305';
-  const woodColor = isLocked ? '#334155' : '#5c3214';
+  // Painted wood with cream lettering; a locked grove's sign is weathered grey.
+  const textColor = isLocked ? '#f1f2f0' : '#fff4dc';
+  const boardColor = isLocked ? '#8d9296' : '#9a6a3a';
+  const outlineColor = isLocked ? '#4a4f53' : '#4a2c14';
+  const woodColor = isLocked ? '#6f7478' : '#7a5230';
   const status = isLocked ? 'LOCKED' : isComplete ? 'DONE' : null;
 
   // Readable from both sides: the back copy is the front copy turned half a circle.
@@ -44,7 +45,7 @@ export const GroveSign: React.FC<GroveSignProps> = ({ concept, position, rotatio
       </mesh>
       <mesh position={[0, BOARD.y, 0]}>
         <boxGeometry args={[BOARD.width + 0.1, BOARD.height + 0.1, BOARD.depth - 0.04]} />
-        <meshStandardMaterial color={isLocked ? '#1e293b' : '#451a03'} roughness={0.9} />
+        <meshStandardMaterial color={isLocked ? '#6b7075' : '#6e4524'} roughness={0.9} />
       </mesh>
 
       {/* A small plaque hangs under the board for locked and finished groves */}
@@ -58,7 +59,7 @@ export const GroveSign: React.FC<GroveSignProps> = ({ concept, position, rotatio
           ))}
           <mesh castShadow>
             <boxGeometry args={[1.5, 0.4, 0.1]} />
-            <meshStandardMaterial color={isLocked ? '#1e293b' : '#14532d'} roughness={0.8} />
+            <meshStandardMaterial color={isLocked ? '#5d6266' : '#4f7a3a'} roughness={0.8} />
           </mesh>
         </group>
       )}
@@ -86,7 +87,7 @@ export const GroveSign: React.FC<GroveSignProps> = ({ concept, position, rotatio
                 position={[0, BOARD.y - BOARD.height / 2 - 0.42, 0.06]}
                 fontSize={0.2}
                 letterSpacing={0.12}
-                color={isLocked ? '#cbd5e1' : '#bbf7d0'}
+                color={isLocked ? '#eef0ee' : '#f4f9e8'}
                 anchorX="center"
                 anchorY="middle"
               >

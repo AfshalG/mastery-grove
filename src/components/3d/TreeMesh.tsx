@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { TreeData } from '../../types/game';
@@ -6,6 +6,7 @@ import { useGameStore } from '../../store/useGameStore';
 import { approachPoint } from '../../game/layout';
 import { liveAvatar } from '../../game/liveAvatar';
 import { damp } from '../../game/motion';
+import { idHash, skinFor } from '../../game/skins';
 
 interface TreeMeshProps {
   tree: TreeData;
@@ -23,38 +24,33 @@ const groundMark = {
   polygonOffsetUnits: -5,
 };
 
-const SPARKLE = {
-  memory: { color: '#5eead4', glow: '#14b8a6' },
-  targeted: { color: '#f472b6', glow: '#ec4899' },
-  teacher: { color: '#c084fc', glow: '#a855f7' },
-  regrown: { color: '#fef08a', glow: '#facc15' },
+// Trees added for a kid carry a small lantern instead of being painted a loud colour.
+const LANTERN = {
+  targeted: '#ef7fa0', // made for you
+  teacher: '#9b84e8', // from the teacher
+  memory: '#57c4b8', // memory check
 };
+const LOCKED_GREY = new THREE.Color('#9aa3a6');
+const WHITE = new THREE.Color('#ffffff');
 
-/**
- * How a tree looks. Its answer state comes first, so a made-for-you tree that withers looks withered;
- * the colour tags for made-for-you, teacher and memory trees only apply while it's still open or healthy.
- */
-function treeLook(tree: TreeData, isLocked: boolean, saplingWaiting: boolean) {
-  const look = { cone: '#2d6a4f', trunk: '#5c4033', emissive: '#000000', glow: 0, scale: 1, droop: 0 };
-  if (isLocked) return { ...look, cone: '#6c757d', trunk: '#495057' };
-  if (tree.state === 'withered') return { ...look, cone: '#8c6239', trunk: '#5d4037', droop: 0.15 };
-  if (tree.state === 'sapling') return { ...look, cone: saplingWaiting ? '#64748b' : '#95d5b2', scale: 0.55 };
-  if (tree.state === 'regrown') return { ...look, cone: '#10b981', emissive: '#059669', glow: 0.25 };
-  if (tree.isMemorySprout) return { ...look, cone: '#0d9488', emissive: '#2dd4bf', glow: 0.5, scale: 0.85 };
-  if (tree.isTargeted) return { ...look, cone: '#db2777', emissive: '#f472b6', glow: 0.45 };
-  if (tree.isTeacherDeployed) return { ...look, cone: '#7c3aed', emissive: '#c084fc', glow: 0.45 };
-  if (tree.state === 'healthy') return { ...look, cone: '#40916c' };
-  return look;
-}
+// A round storybook canopy: a few low-poly balls, bunched.
+const CANOPY: Array<{ r: number; at: [number, number, number] }> = [
+  { r: 1.25, at: [0, 2.55, 0] },
+  { r: 0.85, at: [0.72, 2.2, 0.22] },
+  { r: 0.8, at: [-0.62, 2.3, -0.3] },
+  { r: 0.7, at: [0.1, 3.25, 0.05] },
+];
+// Blossoms dotted over the canopy of a tree answered right.
+const BLOSSOMS: Array<[number, number, number]> = [
+  [0.7, 3.0, 0.8],
+  [-0.9, 2.7, 0.55],
+  [0.2, 3.7, 0.5],
+  [1.2, 2.35, -0.35],
+  [-0.4, 2.2, 1.1],
+  [0.05, 2.9, -1.15],
+];
 
-function sparkleFor(tree: TreeData) {
-  if (tree.state === 'withered' || tree.state === 'sapling') return null;
-  if (tree.isMemorySprout) return SPARKLE.memory;
-  if (tree.isTargeted) return SPARKLE.targeted;
-  if (tree.isTeacherDeployed) return SPARKLE.teacher;
-  if (tree.state === 'regrown') return SPARKLE.regrown;
-  return null;
-}
+const shade = (hex: string, toward: THREE.Color, amount: number) => `#${new THREE.Color(hex).lerp(toward, amount).getHexString()}`;
 
 /** Fades a tree's own meshes, keeping each material's original opacity as the full value. */
 function applyFade(root: THREE.Object3D, amount: number) {
@@ -79,30 +75,84 @@ function applyFade(root: THREE.Object3D, amount: number) {
 export const TreeMesh: React.FC<TreeMeshProps> = React.memo(({ tree, isLocked }) => {
   const bodyRef = useRef<THREE.Group>(null);
   const beaconRef = useRef<THREE.Mesh>(null);
-  const sparkleRef = useRef<THREE.Group>(null);
+  const lanternRef = useRef<THREE.Group>(null);
   const saplingRingRef = useRef<THREE.Mesh>(null);
   const fade = useRef(1);
+  const pop = useRef(1); // 0..1 through the grow-pop; 1 = finished
   const [hovered, setHovered] = useState(false);
 
   const isTutorsPick = useGameStore((s) => s.tutorBeaconTreeId === tree.id);
+  // While this tree's question is open, its floating picture takes the space above it.
+  const isOpen = useGameStore((s) => s.selectedTree?.id === tree.id);
   const moveTo = useGameStore((s) => s.moveTo);
   const setSaplingNotice = useGameStore((s) => s.setSaplingNotice);
   const layout = useGameStore((s) => s.layout);
+  const subject = useGameStore((s) => s.world?.subject);
 
   const position = tree.position || [0, 0, 0];
   const saplingWaiting = tree.state === 'sapling' && (tree.answersSinceMiss ?? 0) < 2;
-  const look = treeLook(tree, isLocked, saplingWaiting);
-  const sparkle = sparkleFor(tree);
+  const answered = tree.state === 'healthy' || tree.state === 'regrown';
+
+  // Each tree keeps its own shade, size and turn on every screen.
+  const hash = idHash(tree.id);
+  const size = 0.92 + (hash % 21) / 100;
+  const turn = ((hash >>> 5) % 628) / 100;
+
+  const look = useMemo(() => {
+    const skin = skinFor(subject);
+    let leaves = skin.foliage[hash % skin.foliage.length];
+    let trunk = skin.trunk;
+    let scale = 1;
+    let droop = 0;
+    let canopyScale = 1;
+    if (tree.state === 'withered') {
+      leaves = skin.withered;
+      droop = 0.18;
+      canopyScale = 0.82;
+    } else if (tree.state === 'sapling') {
+      leaves = shade(leaves, WHITE, saplingWaiting ? 0.15 : 0.3);
+      scale = 0.55;
+    }
+    if (isLocked) {
+      leaves = shade(leaves, LOCKED_GREY, 0.55);
+      trunk = shade(trunk, LOCKED_GREY, 0.4);
+    }
+    return { leaves, trunk, scale, droop, canopyScale, blossom: skin.blossom };
+  }, [subject, hash, tree.state, isLocked, saplingWaiting]);
+
+  const lantern = !answered && !isLocked && !isOpen && tree.state !== 'withered'
+    ? tree.isTargeted
+      ? LANTERN.targeted
+      : tree.isTeacherDeployed
+        ? LANTERN.teacher
+        : tree.isMemorySprout
+          ? LANTERN.memory
+          : null
+    : null;
+
+  // A little pop when a tree turns healthy or regrows.
+  const prevState = useRef(tree.state);
+  useEffect(() => {
+    const wasAnswered = prevState.current === 'healthy' || prevState.current === 'regrown';
+    if (answered && !wasAnswered) pop.current = 0;
+    prevState.current = tree.state;
+  }, [tree.state, answered]);
 
   useFrame((state, dt) => {
     const t = state.clock.elapsedTime;
     if (beaconRef.current && isTutorsPick) {
-      beaconRef.current.rotation.y += dt * 1.5;
-      const pulse = 1 + Math.sin(t * 3) * 0.15;
+      beaconRef.current.rotation.y += dt * 1.2;
+      const pulse = 1 + Math.sin(t * 3) * 0.12;
       beaconRef.current.scale.set(pulse, 1, pulse);
     }
-    if (sparkleRef.current) sparkleRef.current.rotation.y += dt * 2;
-    if (saplingRingRef.current) saplingRingRef.current.scale.setScalar(1 + Math.sin(t * 4) * 0.2);
+    if (lanternRef.current) lanternRef.current.position.y = 4.35 + Math.sin(t * 2 + turn) * 0.12;
+    if (saplingRingRef.current) saplingRingRef.current.scale.setScalar(1 + Math.sin(t * 4) * 0.15);
+
+    if (bodyRef.current) {
+      if (pop.current < 1) pop.current = Math.min(1, pop.current + dt / 0.7);
+      const popScale = 1 + Math.sin(pop.current * Math.PI) * 0.18;
+      bodyRef.current.scale.setScalar(look.scale * size * popScale);
+    }
 
     // Fade this tree while it stands between the camera and the player, so it never hides them.
     const cam = state.camera.position;
@@ -132,7 +182,7 @@ export const TreeMesh: React.FC<TreeMeshProps> = React.memo(({ tree, isLocked })
 
     if (saplingWaiting) {
       const remaining = 2 - (tree.answersSinceMiss ?? 0);
-      setSaplingNotice(`Come back later: Answer ${remaining} more question${remaining > 1 ? 's' : ''} to unlock this review sapling! ⏳`);
+      setSaplingNotice(`This one comes back after ${remaining} more question${remaining > 1 ? 's' : ''}.`);
       return;
     }
 
@@ -142,12 +192,12 @@ export const TreeMesh: React.FC<TreeMeshProps> = React.memo(({ tree, isLocked })
     moveTo([stand.x, 0, stand.z], tree.id);
   };
 
-  // Hovering brightens the tree's own colour rather than turning it green.
-  const coneMaterial = {
-    color: look.cone,
-    roughness: 0.6,
-    emissive: hovered ? look.cone : look.emissive,
-    emissiveIntensity: hovered ? Math.max(look.glow, 0.35) : look.glow,
+  // Hovering warms the tree's own colour rather than recolouring it.
+  const leafMaterial = {
+    color: look.leaves,
+    flatShading: true,
+    emissive: hovered ? look.leaves : '#000000',
+    emissiveIntensity: hovered ? 0.35 : 0,
   };
 
   return (
@@ -166,70 +216,75 @@ export const TreeMesh: React.FC<TreeMeshProps> = React.memo(({ tree, isLocked })
         document.body.style.cursor = 'auto';
       }}
     >
-      {/* The tree itself: only this part droops when withered and fades when in the way */}
-      <group ref={bodyRef} rotation={[0, 0, look.droop]} scale={look.scale}>
-        <mesh position={[0, 0.75, 0]} castShadow receiveShadow>
-          <cylinderGeometry args={[0.22, 0.35, 1.5, 6]} />
-          <meshStandardMaterial color={look.trunk} roughness={0.8} />
+      {/* The tree itself: only this part droops when withered, pops when it grows, and fades when in the way */}
+      <group ref={bodyRef} rotation={[0, turn, look.droop]} scale={look.scale * size}>
+        <mesh position={[0, 0.85, 0]} castShadow receiveShadow>
+          <cylinderGeometry args={[0.2, 0.32, 1.7, 7]} />
+          <meshLambertMaterial color={look.trunk} />
         </mesh>
-        <mesh position={[0, 1.8, 0]} castShadow receiveShadow>
-          <coneGeometry args={[1.3, 1.4, 7]} />
-          <meshStandardMaterial {...coneMaterial} />
-        </mesh>
-        <mesh position={[0, 2.6, 0]} castShadow receiveShadow>
-          <coneGeometry args={[1.0, 1.3, 7]} />
-          <meshStandardMaterial {...coneMaterial} />
-        </mesh>
-        <mesh position={[0, 3.3, 0]} castShadow receiveShadow>
-          <coneGeometry args={[0.7, 1.2, 7]} />
-          <meshStandardMaterial {...coneMaterial} />
-        </mesh>
-
-        {sparkle && (
-          <group ref={sparkleRef} position={[0, 2.8, 0]}>
-            {[0, 1, 2, 3].map((i) => {
-              const angle = (i * Math.PI) / 2;
-              return (
-                <mesh key={i} position={[Math.cos(angle) * 1.3, (i % 2) * 0.4 - 0.2, Math.sin(angle) * 1.3]}>
-                  <octahedronGeometry args={[0.16, 0]} />
-                  <meshStandardMaterial color={sparkle.color} emissive={sparkle.glow} emissiveIntensity={0.9} roughness={0.2} />
-                </mesh>
-              );
-            })}
-          </group>
-        )}
+        <group scale={look.canopyScale} position={[0, (1 - look.canopyScale) * 1.4, 0]}>
+          {CANOPY.map((c, i) => (
+            <mesh key={i} position={c.at} castShadow receiveShadow>
+              <icosahedronGeometry args={[c.r, 0]} />
+              <meshLambertMaterial {...leafMaterial} />
+            </mesh>
+          ))}
+        </group>
+        {answered &&
+          BLOSSOMS.map((at, i) => (
+            <mesh key={i} position={at}>
+              <icosahedronGeometry args={[0.13, 0]} />
+              <meshLambertMaterial color={look.blossom} flatShading emissive={look.blossom} emissiveIntensity={tree.state === 'regrown' ? 0.35 : 0.15} />
+            </mesh>
+          ))}
       </group>
+
+      {/* A lantern over trees added for this kid: made for you, from the teacher, or a memory check */}
+      {lantern && (
+        <group ref={lanternRef} position={[0, 4.35, 0]}>
+          <mesh position={[0, 0.26, 0]}>
+            <cylinderGeometry args={[0.1, 0.16, 0.1, 8]} />
+            <meshLambertMaterial color="#5b4636" />
+          </mesh>
+          <mesh>
+            <sphereGeometry args={[0.22, 16, 12]} />
+            <meshLambertMaterial color={lantern} emissive={lantern} emissiveIntensity={0.9} />
+          </mesh>
+        </group>
+      )}
 
       {/* Ground marks stay flat on the ground */}
       {tree.state === 'sapling' && (
         <mesh ref={saplingRingRef} position={[0, MARK_Y, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-          <ringGeometry args={[0.9 * look.scale, 1.2 * look.scale, 24]} />
-          <meshBasicMaterial color={saplingWaiting ? '#94a3b8' : '#a7f3d0'} opacity={0.7} {...groundMark} />
+          <ringGeometry args={[0.55, 0.72, 24]} />
+          <meshBasicMaterial color={saplingWaiting ? '#b9b3a3' : '#e8f2c8'} opacity={0.8} {...groundMark} />
         </mesh>
       )}
 
-      {/* Byte's pick: a ring, a soft beam and a crystal */}
+      {/* Byte's pick: a warm ring, a soft beam and a crystal */}
       {isTutorsPick && !isLocked && (
         <group>
           <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, MARK_Y + 0.01, 0]}>
-            <ringGeometry args={[1.4, 1.8, 32]} />
-            <meshBasicMaterial color="#fbbf24" opacity={0.6} {...groundMark} />
+            <ringGeometry args={[1.5, 1.85, 40]} />
+            <meshBasicMaterial color="#f2c14e" opacity={0.75} {...groundMark} />
           </mesh>
           <mesh ref={beaconRef} position={[0, 10, 0]}>
             <cylinderGeometry args={[0.15, 0.45, 20, 16, 1, true]} />
-            <meshBasicMaterial color="#fde047" transparent opacity={0.35} side={THREE.DoubleSide} blending={THREE.AdditiveBlending} depthWrite={false} />
+            <meshBasicMaterial color="#ffe08a" transparent opacity={0.22} side={THREE.DoubleSide} blending={THREE.AdditiveBlending} depthWrite={false} />
           </mesh>
-          <mesh position={[0, 4.5, 0]} rotation={[0.4, 0.4, 0]}>
-            <octahedronGeometry args={[0.3, 0]} />
-            <meshStandardMaterial color="#fde047" emissive="#f59e0b" emissiveIntensity={0.9} roughness={0.1} />
-          </mesh>
+          {!isOpen && (
+            <mesh position={[0, 5.0, 0]} rotation={[0.4, 0.4, 0]}>
+              <octahedronGeometry args={[0.28, 0]} />
+              <meshLambertMaterial color="#ffe08a" emissive="#f2a93b" emissiveIntensity={0.8} />
+            </mesh>
+          )}
         </group>
       )}
 
       {hovered && !isLocked && !isTutorsPick && (
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, MARK_Y + 0.01, 0]}>
-          <ringGeometry args={[1.2, 1.4, 24]} />
-          <meshBasicMaterial color={look.cone} opacity={0.6} {...groundMark} />
+          <ringGeometry args={[1.3, 1.5, 32]} />
+          <meshBasicMaterial color="#fff6dc" opacity={0.75} {...groundMark} />
         </mesh>
       )}
     </group>

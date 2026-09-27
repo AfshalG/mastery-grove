@@ -44,7 +44,7 @@ export function computeTutorPick(
   if (memorySprout) {
     return {
       beaconId: memorySprout.id,
-      reason: 'Memory Sprout: Retention check for past misconception',
+      reason: 'Do you still remember this one?',
     };
   }
 
@@ -53,7 +53,7 @@ export function computeTutorPick(
   if (targetedCandidate) {
     return {
       beaconId: targetedCandidate.id,
-      reason: 'Made for you: attacks recent thought pattern',
+      reason: 'made just for you',
     };
   }
 
@@ -61,7 +61,7 @@ export function computeTutorPick(
   if (!hasPredictions) {
     return {
       beaconId: openTrees[0].id,
-      reason: 'First step on the grove trail',
+      reason: 'a good place to start',
     };
   }
 
@@ -79,7 +79,7 @@ export function computeTutorPick(
       });
       return {
         beaconId: matchingCandidates[0].id,
-        reason: 'Checks whether that idea is fixed',
+        reason: 'let\'s check that idea again',
       };
     }
   }
@@ -93,13 +93,13 @@ export function computeTutorPick(
 
   const picked = sortedByOptimalDifficulty[0];
   const pred = predictions[picked.id];
-  let reason = 'Optimal challenge (70% predicted success)';
+  let reason = 'just the right challenge';
 
   if (pred?.misconceptionId) {
     const m = worldMisconceptions.find((x) => x.id === pred.misconceptionId);
     if (m) {
       const shortDesc = m.label.length > 28 ? m.label.slice(0, 26) + '…' : m.label;
-      reason = `Checks: ${shortDesc}`;
+      reason = `watch out for: ${shortDesc}`;
     }
   }
 
@@ -307,15 +307,15 @@ export const useGameStore = create<GameStore>((set, get) => ({
       }).length;
 
       // Generate friendly Professor Byte memory text
-      let watchPattern = 'Last time, you made great progress exploring the grove trail.';
+      let watchPattern = 'You made great progress last time.';
       if (initialActiveMis) {
         const activeM = rawWorld.misconceptions.find((m) => m.id === initialActiveMis);
         if (activeM) {
           const concept = rawWorld.concepts.find((c) => c.id === activeM.conceptId);
-          watchPattern = `Professor Byte remembers: "Last time, you were working on ${concept?.name || 'fractions'}: watch out for ${activeM.label}."`;
+          watchPattern = `Last time you were working on ${concept?.name || 'this'}. Watch out for this one: ${activeM.label}.`;
         }
       } else if (rawWorld.concepts[0]) {
-        watchPattern = `Professor Byte remembers: "Last time, you conquered questions in ${rawWorld.concepts[0].questName}!"`;
+        watchPattern = `Last time you grew trees in ${rawWorld.concepts[0].questName}.`;
       }
 
       welcomeInfo = {
@@ -416,7 +416,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
     if (tree.state === 'sapling' && (tree.answersSinceMiss ?? 0) < 2) {
       const remaining = 2 - (tree.answersSinceMiss ?? 0);
-      get().setSaplingNotice(`Come back later: Answer ${remaining} more tree${remaining > 1 ? 's' : ''} to unlock this review sapling! ⏳`);
+      get().setSaplingNotice(`This one comes back after ${remaining} more question${remaining > 1 ? 's' : ''}.`);
       return;
     }
 
@@ -645,7 +645,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
               set((state) => ({
                 trees: [...state.trees, ...plantExtraTrees(state.layout, state.trees, [sproutTree])],
-                teacherToast: `Professor Byte planted a Memory Sprout at ${concept.questName} for a retention check! 🌿`,
+                teacherToast: `A memory tree grew in ${concept.questName}. Do you still remember?`,
               }));
 
               setTimeout(() => {
@@ -732,7 +732,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         }
         updatedStrengths[tree.targetMisconceptionId] = 0;
         set({
-          teacherToast: 'Retention Check Passed! Misconception marked Overcome in teacher console! 🌟',
+          teacherToast: 'You remembered! That mix-up is fixed.',
         });
         setTimeout(() => set({ teacherToast: null }), 4500);
       } else {
@@ -1021,7 +1021,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         console.error('Diagnosis failed:', err);
         set({
           isDiagnosing: false,
-          diagnosisError: err?.message || 'Could not connect to Professor Byte.',
+          diagnosisError: err?.message || 'Byte could not be reached.',
         });
       }
     }
@@ -1457,7 +1457,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
           set((state) => ({
             trees: [...state.trees, ...plantExtraTrees(state.layout, state.trees, newQuestTrees)],
-            teacherToast: `Quest deployed! 3 new trees planted for "${mis.label}".`,
+            teacherToast: `Sent! ${newQuestTrees.length} new trees for "${mis.label}".`,
           }));
 
           setTimeout(() => {

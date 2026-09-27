@@ -34,9 +34,8 @@ export const FractionVisualSVG: React.FC<FractionVisualSVGProps> = ({ visual, cl
     return (
       <div className={`flex flex-col items-center justify-center p-2 bg-amber-50/70 border border-amber-200/80 rounded-2xl min-w-0 ${className}`}>
         {!hideLabel && (
-          <span className="text-[10px] font-bold text-amber-900 uppercase tracking-wider mb-1.5 flex items-center gap-1">
-            <span>🍰 Fraction Cake:</span>
-            <span className="text-amber-700 font-extrabold">{visual.shaded}/{visual.parts} shaded</span>
+          <span className="text-sm font-extrabold text-ink-soft mb-1.5">
+            {visual.shaded}/{visual.parts} shaded
           </span>
         )}
         <CakeSVG parts={visual.parts} shaded={visual.shaded} size={size} />
@@ -48,11 +47,10 @@ export const FractionVisualSVG: React.FC<FractionVisualSVGProps> = ({ visual, cl
     const halfSize = Math.max(90, size * 0.7);
     return (
       <div className={`flex flex-col items-center justify-center p-3 bg-amber-50/70 border border-amber-200/80 rounded-2xl min-w-0 ${className}`}>
-        <span className="text-[10px] font-bold text-amber-900 uppercase tracking-wider mb-2">🍰 Comparing Visual Portions</span>
         <div className="flex items-center justify-center gap-3 sm:gap-6 w-full">
           {[visual.left, visual.right].map((side, i) => (
             <React.Fragment key={i}>
-              {i === 1 && <span className="text-xs font-bold text-amber-800 uppercase tracking-widest shrink-0">VS</span>}
+              {i === 1 && <span className="text-xs font-black text-ink-soft shrink-0">VS</span>}
               <div className="flex flex-col items-center gap-1 flex-1 min-w-0" style={{ maxWidth: halfSize }}>
                 <CakeSVG parts={side.parts} shaded={side.shaded} size={halfSize} cherry={5.5} />
                 <span className="text-xs font-extrabold text-slate-800 bg-white px-2.5 py-0.5 rounded-full border border-amber-300 shadow-xs">
@@ -73,10 +71,11 @@ export const FractionVisualSVG: React.FC<FractionVisualSVGProps> = ({ visual, cl
 
     return (
       <div className={`flex flex-col items-center justify-center p-3 bg-amber-50/70 border border-amber-200/80 rounded-2xl min-w-0 ${className}`}>
-        <span className="text-[10px] font-bold text-amber-900 uppercase tracking-wider mb-2 flex items-center gap-1">
-          <span>🍫 Chocolate Bar Fraction:</span>
-          <span className="text-amber-800 font-extrabold">{visual.shaded}/{visual.parts} Pieces</span>
-        </span>
+        {!hideLabel && (
+          <span className="text-sm font-extrabold text-ink-soft mb-2">
+            {visual.shaded}/{visual.parts} pieces
+          </span>
+        )}
         <svg
           viewBox={`-5 -5 ${barWidth + 10} ${barHeight + 10}`}
           className="drop-shadow-sm select-none block"
