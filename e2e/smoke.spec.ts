@@ -38,11 +38,13 @@ test('a wrong answer gets a guess at the thinking, a question back, and a teache
   await page.getByTestId('confidence-very-sure').click();
   await page.getByTestId('choice-3').click();
 
-  // Mock Gemini's guess at the thinking, then its question back.
-  // (The card currently cuts both lines short; fix/render-glitches restores the full sentences.)
-  await expect(page.getByText(/My guess: you picked 1\/8/)).toBeVisible();
-  await expect(page.getByText(/What happens if you do the same thing/)).toBeVisible();
+  // Mock Gemini's guess at the thinking, in whole sentences, then its question back, question mark and all.
+  await expect(page.getByText('My guess: you picked 1/8. I think you changed one part but not the other. Right?')).toBeVisible();
+  await expect(page.getByText('What happens if you do the same thing to the top and the bottom?')).toBeVisible();
+  await expect(page.getByRole('dialog')).not.toContainText('..');
   await page.getByTestId('confirm-thought-yes').click();
+  // Once confirmed, the card stops asking.
+  await expect(page.getByRole('dialog')).not.toContainText('Right?');
   await page.getByTestId('continue-btn').click();
 
   // The teacher sees the flag.

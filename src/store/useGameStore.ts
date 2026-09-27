@@ -17,6 +17,7 @@ import {
 import { SAMPLE_WORLD } from '../data/sampleWorld';
 import { buildForest, plantExtraTrees } from '../game/forest';
 import { clampToBounds, type ForestLayout } from '../game/layout';
+import { sanitizeVisual } from '../game/visuals';
 
 export function computeTutorPick(
   trees: TreeData[],
@@ -196,6 +197,9 @@ interface GameStore {
   getCurrentGroveProgress: () => { questName: string; current: number; total: number };
 }
 
+/** Lets the correct-answer chime finish before a grove's unlock fanfare. */
+const UNLOCK_SOUND_DELAY_MS = 700;
+
 function getStorageKey(subject: string) {
   return `mastery_grove_learner_${subject.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()}`;
 }
@@ -251,6 +255,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
       console.warn('Could not read from localStorage:', e);
     }
 
+    // Check every picture before anything draws it; a malformed one used to crash the scene.
+    rawWorld = { ...rawWorld, trees: rawWorld.trees.map((t) => ({ ...t, visual: sanitizeVisual(t.visual) })) };
     const fresh = buildForest(rawWorld, rawWorld.trees);
     const defaultTrees = fresh.trees;
     let layout = fresh.layout;
@@ -281,7 +287,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
       if (Array.isArray(savedData.trees) && savedData.trees.length >= defaultTrees.length) {
         // Keep saved progress but recompute every position, so older saves get the current layout.
-        const restored = buildForest(rawWorld, savedData.trees);
+        const savedTrees: TreeData[] = savedData.trees.map((t: TreeData) => ({ ...t, visual: sanitizeVisual(t.visual) }));
+        const restored = buildForest(rawWorld, savedTrees);
         initialTrees = restored.trees;
         layout = restored.layout;
       }
@@ -802,7 +809,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
       const nextUnlocked = get().getUnlockedConcepts();
       if (nextUnlocked.length > prevUnlocked.length) {
-        set({ soundTrigger: { type: 'unlock', time: Date.now() } });
+        setTimeout(() => set({ soundTrigger: { type: 'unlock', time: Date.now() } }), UNLOCK_SOUND_DELAY_MS);
       }
 
       // Check if memory sprouts can now be planted for newly completed groves
@@ -982,7 +989,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
                         choices: variant.choices,
                         answerIndex: variant.answerIndex,
                         explanation: variant.explanation,
-                        visual: variant.visual || t.visual,
+                        visual: sanitizeVisual(variant.visual) ?? t.visual,
                       }
                     : t
                 ),
@@ -1147,7 +1154,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
       const nextUnlocked = get().getUnlockedConcepts();
       if (nextUnlocked.length > prevUnlocked.length) {
-        set({ soundTrigger: { type: 'unlock', time: Date.now() } });
+        setTimeout(() => set({ soundTrigger: { type: 'unlock', time: Date.now() } }), UNLOCK_SOUND_DELAY_MS);
       }
 
       get().checkAndPlantMemorySprouts();
@@ -1393,7 +1400,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
               citation: null,
               state: 'unanswered',
               isTargeted: true,
-              visual: q.visual,
+              visual: sanitizeVisual(q.visual),
               groveIndex: groveIdx,
               nearTreeId: tree?.id, // grows beside the question that showed the mix-up
             }));
@@ -1444,7 +1451,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
             citation: null,
             state: 'unanswered',
             isTeacherDeployed: true,
-            visual: q.visual,
+            visual: sanitizeVisual(q.visual),
             groveIndex: Math.max(0, conceptIdx),
           }));
 

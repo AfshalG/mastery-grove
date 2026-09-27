@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { damp, turnToward } from './motion';
 import { endSentence, shorten } from './text';
-import { hideServeAnswer, sanitizeVisual } from './visuals';
+import { answerComparison, hideServeAnswer, sanitizeVisual } from './visuals';
 
 describe('shorten', () => {
   it('leaves a short question alone, question mark and all', () => {
@@ -99,5 +99,33 @@ describe('motion', () => {
     expect(Math.abs(diff)).toBeLessThan(1e-9);
     const half = turnToward(3.0, -3.0, 0.5);
     expect(Math.abs(half - 3.0)).toBeLessThan(0.2);
+  });
+});
+
+describe('answerComparison', () => {
+  it('pictures the kid’s answer next to the question’s fraction', () => {
+    expect(answerComparison('Simplify the fraction 4/8 to its simplest form.', '1/8')).toEqual({
+      kid: { parts: 8, shaded: 1 },
+      target: { parts: 8, shaded: 4 },
+      targetLabel: '4/8',
+    });
+  });
+
+  it('draws the same fraction it names, even on two-cake questions', () => {
+    const visual = { kind: 'two-cakes' as const, left: { parts: 4, shaded: 3 }, right: { parts: 8, shaded: 5 } };
+    const c = answerComparison('Which is larger: 3/4 or 5/8?', '5/8', visual);
+    expect(c?.targetLabel).toBe('3/4');
+    expect(c?.target).toEqual({ parts: 4, shaded: 3 });
+  });
+
+  it('uses the serve target for serve-the-cake questions', () => {
+    const c = answerComparison('Serve 2/3 of the cake.', '4/6 slices', undefined, { targetNumerator: 2, targetDenominator: 3, totalSlices: 6 });
+    expect(c).toEqual({ kid: { parts: 6, shaded: 4 }, target: { parts: 6, shaded: 4 }, targetLabel: '2/3' });
+  });
+
+  it('shows nothing when the answer is a sentence rather than a number it can draw', () => {
+    expect(answerComparison('Simplify 4/8.', 'It becomes a smaller quantity than 4/8')).toBeNull();
+    expect(answerComparison('Why does 4/8 equal 1/2?', 'Because it is smaller')).toBeNull();
+    expect(answerComparison('Simplify 30/100.', '3/10')).toBeNull();
   });
 });

@@ -10,77 +10,12 @@ import {
   Cake,
   Utensils,
 } from 'lucide-react';
+import { useShallow } from 'zustand/react/shallow';
 import { useGameStore } from '../../store/useGameStore';
+import { endSentence, shorten } from '../../game/text';
+import { answerComparison, hideServeAnswer } from '../../game/visuals';
 import { ConfidenceLevel } from '../../types/game';
 import { FractionVisualSVG } from './FractionVisualSVG';
-
-function limitWords(str: string, maxWords: number): string {
-  if (!str) return '';
-  const words = str.trim().split(/\s+/);
-  if (words.length <= maxWords) return str.trim();
-  const res = words.slice(0, maxWords).join(' ');
-  return res.endsWith('.') ? res : res + '.';
-}
-
-function extractFractionsForComparison(
-  question: string,
-  studentChoice: string,
-  visual?: any,
-  serveConfig?: any
-) {
-  let targetParts = 8;
-  let targetShaded = 4;
-  let targetFractionStr = '4/8';
-
-  if (serveConfig) {
-    targetParts = serveConfig.totalSlices || 8;
-    targetShaded = Math.round((serveConfig.targetNumerator / serveConfig.targetDenominator) * targetParts);
-    targetFractionStr = `${serveConfig.targetNumerator}/${serveConfig.targetDenominator}`;
-  } else if (visual) {
-    if (visual.kind === 'cake') {
-      targetParts = visual.parts;
-      targetShaded = visual.shaded;
-      targetFractionStr = `${targetShaded}/${targetParts}`;
-    } else if (visual.kind === 'two-cakes') {
-      targetParts = visual.right?.parts || visual.left?.parts || 8;
-      targetShaded = visual.right?.shaded || visual.left?.shaded || 4;
-      targetFractionStr = `${targetShaded}/${targetParts}`;
-    }
-  }
-
-  const qMatch = question.match(/(\d+)\s*\/\s*(\d+)/);
-  if (qMatch) {
-    targetFractionStr = `${qMatch[1]}/${qMatch[2]}`;
-  }
-
-  let kidParts = targetParts;
-  let kidShaded = 1;
-
-  const choiceMatch = studentChoice.match(/(\d+)\s*\/\s*(\d+)/);
-  if (choiceMatch) {
-    const num = parseInt(choiceMatch[1], 10);
-    const den = parseInt(choiceMatch[2], 10);
-    if (!isNaN(num) && !isNaN(den) && den > 0) {
-      kidParts = den;
-      kidShaded = Math.min(num, den);
-    }
-  } else {
-    const numMatch = studentChoice.match(/\d+/);
-    if (numMatch) {
-      kidShaded = Math.min(parseInt(numMatch[0], 10), targetParts);
-    } else {
-      kidShaded = 1;
-    }
-  }
-
-  return {
-    targetParts,
-    targetShaded,
-    targetFractionStr,
-    kidParts,
-    kidShaded,
-  };
-}
 
 export const QuestionModal: React.FC = () => {
   const {
@@ -103,7 +38,29 @@ export const QuestionModal: React.FC = () => {
     world,
     predictions,
     toggleShowPredictions,
-  } = useGameStore();
+  } = useGameStore(
+    useShallow((s) => ({
+      selectedTree: s.selectedTree,
+      selectedConfidence: s.selectedConfidence,
+      setSelectedConfidence: s.setSelectedConfidence,
+      closeTree: s.closeTree,
+      answerTreeQuestion: s.answerTreeQuestion,
+      answerServeQuestion: s.answerServeQuestion,
+      isDiagnosing: s.isDiagnosing,
+      diagnosisResult: s.diagnosisResult,
+      diagnosisError: s.diagnosisError,
+      currentThoughtRecord: s.currentThoughtRecord,
+      confirmThoughtProcess: s.confirmThoughtProcess,
+      isRevising: s.isRevising,
+      retryDiagnosis: s.retryDiagnosis,
+      lastAnswerResult: s.lastAnswerResult,
+      showExplanationModal: s.showExplanationModal,
+      dismissFeedback: s.dismissFeedback,
+      world: s.world,
+      predictions: s.predictions,
+      toggleShowPredictions: s.toggleShowPredictions,
+    }))
+  );
 
   const [selectedChoiceIdx, setSelectedChoiceIdx] = useState<number | null>(null);
   const [hasSubmitted, setHasSubmitted] = useState(false);
@@ -223,7 +180,7 @@ export const QuestionModal: React.FC = () => {
                 Yes! That's it.
               </h2>
               <p className="text-sm text-slate-700 font-medium leading-relaxed max-w-xs">
-                {limitWords(lastAnswerResult.tree.explanation || "Dividing top and bottom keeps the portion equal.", 20)}
+                {shorten(lastAnswerResult.tree.explanation || 'Dividing top and bottom keeps the portion equal.', 24)}
               </p>
               <button
                 onClick={dismissFeedback}
@@ -245,29 +202,22 @@ export const QuestionModal: React.FC = () => {
 
               {/* If question has fraction picture: Two small cakes side by side */}
               {lastAnswerResult.tree.visual && (() => {
-                const comp = extractFractionsForComparison(
+                const comp = answerComparison(
                   lastAnswerResult.tree.question,
                   lastAnswerResult.chosenChoice,
                   lastAnswerResult.tree.visual,
                   lastAnswerResult.tree.serveConfig
                 );
+                if (!comp) return null;
                 return (
                   <div className="flex items-center justify-center gap-6 py-1">
                     <div className="flex flex-col items-center gap-1">
                       <span className="text-xs font-bold text-slate-700">You made</span>
-                      <FractionVisualSVG
-                        visual={{ kind: 'cake', parts: comp.kidParts, shaded: comp.kidShaded }}
-                        size={84}
-                        hideLabel={true}
-                      />
+                      <FractionVisualSVG visual={{ kind: 'cake', ...comp.kid }} size={84} hideLabel={true} />
                     </div>
                     <div className="flex flex-col items-center gap-1">
-                      <span className="text-xs font-bold text-slate-700">{comp.targetFractionStr} looks like</span>
-                      <FractionVisualSVG
-                        visual={{ kind: 'cake', parts: comp.targetParts, shaded: comp.targetShaded }}
-                        size={84}
-                        hideLabel={true}
-                      />
+                      <span className="text-xs font-bold text-slate-700">{comp.targetLabel} looks like</span>
+                      <FractionVisualSVG visual={{ kind: 'cake', ...comp.target }} size={84} hideLabel={true} />
                     </div>
                   </div>
                 );
@@ -294,11 +244,13 @@ export const QuestionModal: React.FC = () => {
                 <div className="space-y-3">
                   {/* One line: "My guess: <short>. Right?" */}
                   {(() => {
-                    const raw = diagnosisResult?.thoughtProcess || currentThoughtRecord?.thoughtProcess || 'you used whole-number rules';
-                    const shortGuess = limitWords(raw.replace(/^You\s+/i, 'you ').replace(/\.$/, ''), 9);
+                    const raw = diagnosisResult?.thoughtProcess || currentThoughtRecord?.thoughtProcess || 'You used whole-number rules.';
+                    const guess = endSentence(shorten(raw, 18)).replace(/^You\b/, 'you');
+                    const asking = currentThoughtRecord?.confirmed === 'unanswered' && !showRevisionInput;
                     return (
                       <p className="text-xs sm:text-sm font-semibold text-slate-900 leading-snug">
-                        My guess: {shortGuess}. Right?
+                        My guess: {guess}
+                        {asking && ' Right?'}
                       </p>
                     );
                   })()}
@@ -358,7 +310,7 @@ export const QuestionModal: React.FC = () => {
                   {/* Hint question in one line */}
                   {diagnosisResult?.scaffoldHint && (
                     <p className="text-xs text-indigo-900 font-medium italic">
-                      {limitWords(diagnosisResult.scaffoldHint, 12)}
+                      {shorten(diagnosisResult.scaffoldHint, 20)}
                     </p>
                   )}
 
@@ -389,14 +341,14 @@ export const QuestionModal: React.FC = () => {
 
   // Active question modal
   const concept = world?.concepts.find((c) => c.id === selectedTree.conceptId);
-  const guessPct = currentPrediction ? Math.round(currentPrediction.pCorrect * 100) : 75;
+  const guessPct = currentPrediction ? Math.round(currentPrediction.pCorrect * 100) : null;
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-xs">
       <div
         role="dialog"
         aria-labelledby="question-modal-title"
-        className="w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]"
+        className="w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-200 flex flex-col max-h-[90dvh]"
       >
         {/* Modal Header */}
         <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
@@ -440,7 +392,7 @@ export const QuestionModal: React.FC = () => {
           {/* Cake picture first and bigger */}
           {selectedTree.visual && (
             <div className="flex justify-center">
-              <FractionVisualSVG visual={selectedTree.visual} size={220} className="w-full max-w-sm" />
+              <FractionVisualSVG visual={hideServeAnswer(selectedTree.visual, selectedTree.kind)!} size={220} className="w-full max-w-sm" />
             </div>
           )}
 
@@ -450,6 +402,7 @@ export const QuestionModal: React.FC = () => {
           </h3>
 
           {/* Byte's guess becomes a small chip ("Byte's guess: 75% right"), tapping it shows short why */}
+          {guessPct !== null && (
           <div className="flex flex-col items-start gap-1">
             <button
               type="button"
@@ -465,10 +418,11 @@ export const QuestionModal: React.FC = () => {
             </button>
             {showByteWhy && (
               <div className="text-xs text-indigo-950 bg-indigo-50/90 border border-indigo-200 rounded-xl px-3 py-1.5 animate-in fade-in duration-150 leading-snug">
-                {limitWords(currentPrediction?.why || "You understand this topic well.", 8)}
+                {shorten(currentPrediction?.why || 'You understand this topic well.', 12)}
               </div>
             )}
           </div>
+          )}
 
           {/* Confidence Selector ("How sure are you?") */}
           <div

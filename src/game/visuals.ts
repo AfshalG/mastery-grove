@@ -38,3 +38,47 @@ export function hideServeAnswer(v: FractionVisual | undefined, kind: string | un
   if (v.kind === 'two-cakes') return { ...v, left: { ...v.left, shaded: 0 }, right: { ...v.right, shaded: 0 } };
   return { ...v, shaded: 0 };
 }
+
+type Slices = { parts: number; shaded: number };
+
+const drawable = (parts: number, shaded: number): Slices | null =>
+  parts >= 1 && parts <= MAX_PARTS && shaded >= 0 && shaded <= parts ? { parts, shaded } : null;
+
+/**
+ * The "You made / 3/4 looks like" pictures after a wrong answer. The target is drawn from the same fraction
+ * its label names. The kid's side is drawn only when their answer is itself a fraction or a count; a sentence
+ * answer gets no picture rather than a made-up one.
+ */
+export function answerComparison(
+  question: string,
+  choice: string,
+  visual?: FractionVisual,
+  serveConfig?: { targetNumerator: number; targetDenominator: number; totalSlices: number }
+): { kid: Slices; target: Slices; targetLabel: string } | null {
+  let target: Slices | null = null;
+  let targetLabel = '';
+
+  const inQuestion = question.match(/(\d+)\s*\/\s*(\d+)/);
+  if (serveConfig && serveConfig.targetDenominator > 0) {
+    const parts = serveConfig.totalSlices;
+    target = drawable(parts, Math.round((serveConfig.targetNumerator / serveConfig.targetDenominator) * parts));
+    targetLabel = `${serveConfig.targetNumerator}/${serveConfig.targetDenominator}`;
+  } else if (inQuestion) {
+    target = drawable(Number(inQuestion[2]), Number(inQuestion[1]));
+    targetLabel = `${inQuestion[1]}/${inQuestion[2]}`;
+  } else if (visual && visual.kind !== 'two-cakes') {
+    target = drawable(visual.parts, visual.shaded);
+    targetLabel = `${visual.shaded}/${visual.parts}`;
+  }
+  if (!target) return null;
+
+  const fraction = choice.match(/^\s*(\d+)\s*\/\s*(\d+)\s*(slices?|pieces?|of the (cake|bar))?\s*\.?\s*$/i);
+  const count = choice.match(/^\s*(\d+)\s*(slices?|pieces?)?\s*\.?\s*$/i);
+  const kid = fraction
+    ? drawable(Number(fraction[2]), Number(fraction[1]))
+    : count
+      ? drawable(target.parts, Number(count[1]))
+      : null;
+
+  return kid ? { kid, target, targetLabel } : null;
+}
