@@ -120,15 +120,16 @@ export const TreeMesh: React.FC<TreeMeshProps> = React.memo(({ tree, isLocked })
     return { leaves, trunk, scale, droop, canopyScale, blossom: skin.blossom };
   }, [subject, hash, tree.state, isLocked, saplingWaiting]);
 
-  const lantern = !answered && !isLocked && !isOpen && tree.state !== 'withered'
-    ? tree.isTargeted
-      ? LANTERN.targeted
-      : tree.isTeacherDeployed
-        ? LANTERN.teacher
-        : tree.isMemorySprout
-          ? LANTERN.memory
-          : null
-    : null;
+  // A lantern marks a tree waiting for this kid: a memory check (even on a grown tree), made for you, or from the teacher.
+  const lantern = (() => {
+    if (isLocked || isOpen || tree.state === 'withered') return null;
+    if (tree.memoryDue) return LANTERN.memory;
+    if (answered) return null;
+    if (tree.isTargeted) return LANTERN.targeted;
+    if (tree.isTeacherDeployed) return LANTERN.teacher;
+    if (tree.isMemorySprout) return LANTERN.memory;
+    return null;
+  })();
 
   // A little pop when a tree turns healthy or regrows.
   const prevState = useRef(tree.state);

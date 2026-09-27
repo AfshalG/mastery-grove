@@ -13,6 +13,8 @@ import {
   MisconceptionData,
   ThoughtProcessRecord,
   WelcomeBackInfo,
+  Reflection,
+  ReflectionRating,
 } from '../types/game';
 import { SAMPLE_WORLD } from '../data/sampleWorld';
 import { buildForest, isExtraTree, plantExtraTrees } from '../game/forest';
@@ -20,6 +22,7 @@ import { approachPoint, clampToBounds, type ForestLayout, type Vec2 } from '../g
 import { stoneSpots } from '../game/stones';
 import { sanitizeVisual } from '../game/visuals';
 import { computeTutorPick } from '../game/planner';
+import { dueTrees, judgmentFeedback, reviewCard, type Card } from '../game/memory';
 import {
   SAPLING_SPACING,
   activeMisconception,
@@ -59,6 +62,22 @@ interface GameStore {
   selectedTree: TreeData | null;
   /** Where the answer stones stand for the open question (one per choice); null when none are up. */
   answerStones: Vec2[] | null;
+  /** A memory-check question keeps its choices hidden until the kid has an answer in mind (retrieval practice). */
+  choicesHidden: boolean;
+  revealChoices: () => void;
+
+  // Retention: sessions, Leitner cards, the Memory Quest and reflection
+  session: number;
+  cards: Record<string, Card>;
+  reflections: Reflection[];
+  /** The grove the kid just finished and hasn't reflected on yet. */
+  pendingReflection: string | null;
+  lastPlayedDay: string | null;
+  /** A new session: trees due for a memory check come back (the teacher can start one; so does a new day). */
+  startNextSession: () => void;
+  /** Saves the kid's reflection and returns the feedback line, if their feeling and results disagree. */
+  submitReflection: (rating: ReflectionRating, note: string) => string | null;
+  dismissReflection: () => void;
   /** The kid is standing on an answer stone before saying how sure they are. */
   confidenceNudge: boolean;
   setConfidenceNudge: (on: boolean) => void;
@@ -143,7 +162,13 @@ const SAVED_FIELDS = [
   'predictionStats',
   'predictions',
   'trees',
+  'session',
+  'cards',
+  'reflections',
+  'lastPlayedDay',
 ] as const;
+
+const today = () => new Date().toISOString().slice(0, 10);
 
 /** Each diagnosis request gets a number; a reply for an older one updates the records but not the card. */
 let diagnosisSeq = 0;
@@ -171,6 +196,37 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   selectedTree: null,
   answerStones: null,
+  choicesHidden: false,
+  revealChoices: () => {
+    const { selectedTree } = get();
+    if (!selectedTree) return;
+    set({ choicesHidden: false, answerStones: stonesFor(selectedTree) });
+  },
+  session: 1,
+  cards: {},
+  reflections: [],
+  pendingReflection: null,
+  lastPlayedDay: null,
+  startNextSession: () => {
+    const { session, cards, trees } = get();
+    const next = session + 1;
+    const due = new Set(dueTrees(cards, next));
+    set({ session: next, lastPlayedDay: today(), trees: trees.map((t) => (due.has(t.id) ? { ...t, memoryDue: true } : t)) });
+    if (due.size > 0) flashToast(`Memory Quest: ${due.size} tree${due.size > 1 ? 's' : ''} to remember.`);
+    get().updateTutorBeacon();
+    get().refreshPredictions();
+  },
+  submitReflection: (rating, note) => {
+    const { pendingReflection: conceptId, attempts, trees, session } = get();
+    if (!conceptId) return null;
+    const inGrove = attempts.filter((a) => trees.find((t) => t.id === a.treeId)?.conceptId === conceptId);
+    const accuracy = inGrove.length ? inGrove.filter((a) => a.correct).length / inGrove.length : 1;
+    const feedback = judgmentFeedback(rating, accuracy);
+    const reflection: Reflection = { conceptId, rating, note: note.trim().slice(0, 300), accuracy, feedback, session, at: Date.now() };
+    set({ reflections: [reflection, ...get().reflections] });
+    return feedback;
+  },
+  dismissReflection: () => set({ pendingReflection: null }),
   confidenceNudge: false,
   setConfidenceNudge: (on) => set({ confidenceNudge: on }),
   selectedConfidence: null,
@@ -226,6 +282,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
     let initialPredictions: Record<string, TreePrediction> = {};
     let initialActiveMis: string | null = null;
     let welcomeInfo: WelcomeBackInfo | null = null;
+    let initialSession = 1;
+    let initialCards: Record<string, Card> = {};
+    let initialReflections: Reflection[] = [];
+    let initialDay: string | null = null;
 
     rawWorld.misconceptions.forEach((m) => {
       initialStrengths[m.id] = 0;
@@ -240,6 +300,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
       initialStats = savedData.predictionStats || initialStats;
       initialPredictions = savedData.predictions || {};
       initialActiveMis = savedData.activeMisconceptionId || null;
+      initialSession = Number(savedData.session) || 1;
+      initialCards = savedData.cards || {};
+      initialReflections = savedData.reflections || [];
+      initialDay = savedData.lastPlayedDay || null;
 
       if (Array.isArray(savedData.trees) && savedData.trees.length >= defaultTrees.length) {
         // Keep saved progress but recompute every position, so older saves get the current layout.
@@ -309,7 +373,15 @@ export const useGameStore = create<GameStore>((set, get) => ({
       isPredicting: false,
       welcomeBackInfo: welcomeInfo,
       saplingNotice: null,
+      session: initialSession,
+      cards: initialCards,
+      reflections: initialReflections,
+      pendingReflection: null,
+      lastPlayedDay: initialDay ?? today(),
     });
+
+    // Coming back on a new day starts a new session, and its Memory Quest.
+    if (initialDay && initialDay !== today() && Object.keys(initialCards).length > 0) get().startNextSession();
 
     // Check for retention check memory sprouts and refresh predictions
     setTimeout(() => {
@@ -352,18 +424,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
       return;
     }
 
-    // Multiple-choice questions raise a row of answer stones between the kid and the tree.
-    const { layout, trees } = get();
-    let answerStones: Vec2[] | null = null;
-    if (layout && tree.position && tree.kind !== 'serve' && tree.choices.length > 0) {
-      const at = { x: tree.position[0], z: tree.position[2] };
-      const others = trees.filter((t) => t.id !== tree.id && t.position).map((t) => ({ x: t.position![0], z: t.position![2] }));
-      answerStones = stoneSpots(at, approachPoint(layout, at), tree.choices.length, others);
-    }
+    // A memory check asks the kid to think of the answer before the choices (and their stones) appear.
+    const choicesHidden = !!tree.memoryDue;
 
     set({
       selectedTree: tree,
-      answerStones,
+      answerStones: choicesHidden ? null : stonesFor(tree),
+      choicesHidden,
       questListOpen: false, // the list is for finding trees; it would sit under the question card
       selectedConfidence: null,
       diagnosisResult: null,
@@ -378,6 +445,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set({
       selectedTree: null,
       answerStones: null,
+      choicesHidden: false,
       selectedConfidence: null,
       diagnosisResult: null,
       diagnosisError: null,
@@ -627,7 +695,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       // A sapling answered right regrows the worksheet tree it came from, however many tries back.
       const rootId = tree.isSapling ? rootTreeId(trees, tree) : null;
       const finalTrees: TreeData[] = updatedTreesWithSpacing.map((t) => {
-        if (t.id === treeId) return { ...t, state: nextState };
+        if (t.id === treeId) return { ...t, state: nextState, memoryDue: false };
         if (rootId && rootId !== treeId && t.id === rootId) return { ...t, state: 'regrown' };
         return t;
       });
@@ -672,6 +740,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
       set({
         trees: finalTrees,
+        cards: reviewedCards(tree, true),
         selectedTree: { ...tree, state: nextState },
         lastAnswerResult: {
           isCorrect: true,
@@ -697,12 +766,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
       // Check if memory sprouts can now be planted for newly completed groves
       get().checkAndPlantMemorySprouts();
+      maybeAskForReflection(tree.conceptId);
       get().updateTutorBeacon();
       get().refreshPredictions();
     } else {
       // Wrong!
       const updatedTrees = updatedTreesWithSpacing.map((t) =>
-        t.id === treeId ? { ...t, state: 'withered' as const } : t
+        t.id === treeId ? { ...t, state: 'withered' as const, memoryDue: false } : t
       );
 
       // Sprout a sapling beside the missed tree, starting with answersSinceMiss = 0
@@ -739,6 +809,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
       set({
         trees: finalTrees,
+        cards: reviewedCards(tree, false),
         selectedTree: { ...tree, state: 'withered' },
         isDiagnosing: true,
         diagnosisError: null,
@@ -834,7 +905,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
       const rootId = tree.isSapling ? rootTreeId(trees, tree) : null;
       const finalTrees: TreeData[] = updatedTreesWithSpacing.map((t) => {
-        if (t.id === treeId) return { ...t, state: nextState };
+        if (t.id === treeId) return { ...t, state: nextState, memoryDue: false };
         if (rootId && rootId !== treeId && t.id === rootId) return { ...t, state: 'regrown' };
         return t;
       });
@@ -867,6 +938,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
       set({
         trees: finalTrees,
+        cards: reviewedCards(tree, true),
         selectedTree: { ...tree, state: nextState },
         lastAnswerResult: {
           isCorrect: true,
@@ -890,6 +962,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       }
 
       get().checkAndPlantMemorySprouts();
+      maybeAskForReflection(tree.conceptId);
       get().updateTutorBeacon();
       get().refreshPredictions();
     } else {
@@ -904,7 +977,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       }
 
       const updatedTrees = updatedTreesWithSpacing.map((t) =>
-        t.id === treeId ? { ...t, state: 'withered' as const } : t
+        t.id === treeId ? { ...t, state: 'withered' as const, memoryDue: false } : t
       );
 
       // Sprout a sapling beside the missed tree
@@ -977,6 +1050,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
       set({
         trees: finalTrees,
+        cards: reviewedCards(tree, false),
         selectedTree: { ...tree, state: 'withered' },
         isDiagnosing: false,
         diagnosisError: null,
@@ -1351,3 +1425,28 @@ useGameStore.subscribe((state, prev) => {
     }
   }, 300);
 });
+
+/** The answer stones for a multiple-choice tree: a row between the kid's spot and the tree (none for serve-the-cake). */
+function stonesFor(tree: TreeData): Vec2[] | null {
+  const { layout, trees } = useGameStore.getState();
+  if (!layout || !tree.position || tree.kind === 'serve' || tree.choices.length === 0) return null;
+  const at = { x: tree.position[0], z: tree.position[2] };
+  const others = trees.filter((t) => t.id !== tree.id && t.position).map((t) => ({ x: t.position![0], z: t.position![2] }));
+  return stoneSpots(at, approachPoint(layout, at), tree.choices.length, others);
+}
+
+/** The kid's cards after an answer: the worksheet tree behind it moves box (a sapling reviews the tree it came from). */
+function reviewedCards(tree: TreeData, correct: boolean): Record<string, Card> {
+  const { trees, cards, session } = useGameStore.getState();
+  const cardId = tree.isSapling ? rootTreeId(trees, tree) : tree.id;
+  const owner = trees.find((t) => t.id === cardId);
+  if (!owner || isExtraTree(owner)) return cards;
+  return { ...cards, [cardId]: reviewCard(cards[cardId], correct, session) };
+}
+
+/** When a grove becomes fully grown, ask the kid how well they know it now (once per grove per session). */
+function maybeAskForReflection(conceptId: string) {
+  const s = useGameStore.getState();
+  const done = s.reflections.some((r) => r.conceptId === conceptId && r.session === s.session);
+  if (!done && isGroveComplete(s.trees, conceptId)) useGameStore.setState({ pendingReflection: conceptId });
+}

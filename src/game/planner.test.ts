@@ -30,6 +30,11 @@ describe('computeTutorPick (Byte’s pick)', () => {
     expect(pick([tree('a'), tree('made', { isTargeted: true })]).beaconId).toBe('made');
   });
 
+  it('sends the kid to a grown tree that is due for a memory check', () => {
+    const due = tree('due', { state: 'healthy', memoryDue: true });
+    expect(pick([tree('a'), tree('made', { isTargeted: true }), due])).toEqual({ beaconId: 'due', reason: 'Do you still remember this one?' });
+  });
+
   it('never picks a tree that is answered, wilted, waiting as a sapling, or in a locked grove', () => {
     const trees = [
       tree('done', { state: 'healthy' }),

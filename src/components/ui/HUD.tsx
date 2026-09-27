@@ -17,6 +17,7 @@ function snippet(question: string, words = 6) {
 /** What a tree shows in the list: its answer state first, then whether it was added for this kid. */
 function treeStatus(tree: TreeData) {
   const waiting = tree.state === 'sapling' && (tree.answersSinceMiss ?? 0) < 2;
+  if (tree.memoryDue) return { label: 'Memory check', icon: <Lantern size={16} color="var(--color-teal)" /> };
   if (tree.state === 'healthy') return { label: 'Grown', icon: <Leaf size={16} /> };
   if (tree.state === 'regrown') return { label: 'Regrown', icon: <Leaf size={16} color="#6fae62" /> };
   if (tree.state === 'withered') return { label: 'Wilted', icon: <Leaf size={16} color="#a08c68" /> };

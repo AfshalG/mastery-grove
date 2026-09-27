@@ -9,6 +9,7 @@ import {
   isGroveComplete,
   rootTreeId,
   unlockedConcepts,
+  groveHealth,
   activeMisconception,
   weakenMisconception,
   worldFingerprint,
@@ -50,8 +51,29 @@ describe('isGroveComplete', () => {
   });
 });
 
+describe('groveHealth', () => {
+  it('is the share of the grove’s own trees currently grown, ignoring extras', () => {
+    const trees = [
+      tree('a', 'c1', 'healthy'),
+      tree('b', 'c1', 'regrown'),
+      tree('c', 'c1', 'withered'),
+      tree('d', 'c1', 'unanswered'),
+      tree('x', 'c1', 'healthy', { isTargeted: true }),
+    ];
+    expect(groveHealth(trees, 'c1')).toBe(0.5);
+    expect(groveHealth([], 'c1')).toBe(0);
+  });
+});
+
 describe('unlockedConcepts', () => {
   const world = SAMPLE_WORLD;
+
+  it('opens the next grove at 60% grown, so one hard question never blocks a kid', () => {
+    const c1 = world.trees.filter((t) => t.conceptId === 'c1').map((t) => t.id);
+    const grown = (n: number) => world.trees.map((t) => ({ ...t, state: c1.indexOf(t.id) > -1 && c1.indexOf(t.id) < n ? ('healthy' as const) : ('unanswered' as const) }));
+    expect(unlockedConcepts(world, grown(2))).toEqual(['c1']); // 2 of 5
+    expect(unlockedConcepts(world, grown(3))).toEqual(['c1', 'c2']); // 3 of 5
+  });
 
   it('opens only groves whose prerequisites are complete', () => {
     const fresh = world.trees.map((t) => ({ ...t, state: 'unanswered' as const }));
@@ -99,6 +121,10 @@ describe('canOpenTree', () => {
   it('keeps answered trees closed (a wrong repeat answer used to lock groves again)', () => {
     expect(canOpenTree(tree('a', 'c1', 'healthy'), ['c1'])).toEqual({ ok: false, reason: 'done' });
     expect(canOpenTree(tree('a', 'c1', 'regrown'), ['c1'])).toEqual({ ok: false, reason: 'done' });
+  });
+
+  it('opens a grown tree again when it is due for a memory check', () => {
+    expect(canOpenTree(tree('a', 'c1', 'healthy', { memoryDue: true }), ['c1'])).toEqual({ ok: true });
   });
 
   it('keeps a withered tree closed: its sapling brings the question back later', () => {

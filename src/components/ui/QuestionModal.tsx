@@ -4,6 +4,7 @@ import { X } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { useGameStore } from '../../store/useGameStore';
 import { endSentence, shorten } from '../../game/text';
+import { calibrationLine } from '../../game/memory';
 import { answerComparison, hideServeAnswer } from '../../game/visuals';
 import { ConfidenceLevel, TreeData } from '../../types/game';
 import { FractionVisualSVG } from './FractionVisualSVG';
@@ -21,8 +22,8 @@ function TreeTag({ tree }: { tree: TreeData }) {
     ? { label: 'Made for you', color: 'var(--color-rose)' }
     : tree.isTeacherDeployed
       ? { label: 'From your teacher', color: 'var(--color-violet)' }
-      : tree.isMemorySprout
-        ? { label: 'Memory check', color: 'var(--color-teal)' }
+      : tree.isMemorySprout || tree.memoryDue
+        ? { label: 'From memory', color: 'var(--color-teal)' }
         : null;
   if (tag)
     return (
@@ -64,8 +65,12 @@ export const QuestionModal: React.FC = () => {
     toggleShowPredictions,
     confidenceNudge,
     hasStones,
+    choicesHidden,
+    revealChoices,
   } = useGameStore(
     useShallow((s) => ({
+      choicesHidden: s.choicesHidden,
+      revealChoices: s.revealChoices,
       confidenceNudge: s.confidenceNudge,
       hasStones: s.answerStones !== null,
       selectedTree: s.selectedTree,
@@ -213,6 +218,7 @@ export const QuestionModal: React.FC = () => {
                 <h2 id="feedback-title" className="text-2xl font-black">
                   Yes! That's it.
                 </h2>
+                <p className="text-sm font-bold text-leaf-deep">{calibrationLine(lastAnswerResult.confidence, true)}</p>
                 <p className="text-base text-ink-soft max-w-xs">
                   {shorten(lastAnswerResult.tree.explanation || 'Dividing top and bottom keeps the portion equal.', 24)}
                 </p>
@@ -222,9 +228,12 @@ export const QuestionModal: React.FC = () => {
               </div>
             ) : (
               <div className="space-y-4">
-                <h2 id="feedback-title" className="text-2xl font-black pr-10">
-                  Not quite.
-                </h2>
+                <div className="pr-10">
+                  <h2 id="feedback-title" className="text-2xl font-black">
+                    Not quite.
+                  </h2>
+                  <p className="text-sm font-bold text-ink-soft">{calibrationLine(lastAnswerResult.confidence, false)}</p>
+                </div>
 
                 {lastAnswerResult.tree.visual &&
                   (() => {
@@ -457,6 +466,14 @@ export const QuestionModal: React.FC = () => {
               </button>
             </div>
           ) : (
+            choicesHidden ? (
+            <div className="rounded-2xl bg-paper-deep/70 p-4 text-center space-y-3">
+              <p className="font-bold">From memory: think of your answer before you look.</p>
+              <button type="button" data-testid="reveal-choices-btn" onClick={revealChoices} className="btn btn-sun px-5 py-2.5">
+                I've got it in my head
+              </button>
+            </div>
+            ) : (
             <div className="space-y-2">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-2">
               {selectedTree.choices.map((choice, idx) => {
@@ -482,6 +499,7 @@ export const QuestionModal: React.FC = () => {
               <p className="text-center text-sm font-semibold text-ink-soft">Step onto a stone to answer, or tap one here.</p>
             )}
             </div>
+            )
           )}
         </div>
       </div>

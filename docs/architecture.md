@@ -165,14 +165,14 @@ interface Room {
 |---|---|
 | Correct | `choiceIndex === answerIndex`. Recall answers are normalised first: case, spaces, and numbers or fractions compared as values. |
 | Prediction score | exact if `predictedChoice` matched. direction if `pCorrect >= 0.5` matched whether the student was right. miss otherwise. |
-| Planner | If a misconception is active, pick an open tree whose wrong options test it. Otherwise pick the open tree with P(correct) closest to 0.7. |
+| Planner | Memory checks first, then made-for-you trees. With no predictions yet, the first open tree. If a misconception is active, the open tree Byte predicts will show it, with P(correct) closest to 0.6. Otherwise the open tree with P(correct) closest to 0.7. |
 | Leitner | New cards start in box 1. First correct answer: box 2 (learned). A correct answer in a later session: box 3 (mastered). Wrong: box 1. |
 | Spacing | Fixing a missed tree only counts if at least one other question came between the miss and the fix. |
-| Due (Memory Quest) | At session start: missed cards (box 1), box 2 last seen at least 1 session ago, box 3 at least 3 sessions ago. |
-| Grove health | Share of a grove's base trees in box 2 or higher. |
+| Due (Memory Quest) | When the teacher starts the next session, or the kid comes back on a new day: box 2 trees last seen at least 1 session ago, box 3 trees at least 3 sessions ago. Missed trees come back through their saplings instead. A due tree hides its choices until the kid has an answer in mind. |
+| Grove health | Share of a grove's worksheet trees answered right. Saplings and made-for-you trees don't count. |
 | Unlock | A grove opens when every prerequisite grove has health of at least 0.6. |
 | Saplings | At most 2 Made-for-you trees per missed tree per session. |
-| Calibration | Very sure and wrong: overconfident. Not sure and right: underconfident. Anything else: calibrated. |
+| Calibration | One line after every answer compares confidence with the result. Very sure and wrong: "that's the moment to slow down and check". Not sure and right: "you knew more than you thought". |
 | Reflection feedback | Rating 3+ with accuracy below 70%: "You felt sure, but got X% right." Rating 2 or less with accuracy 70%+: "You know more than you think." |
 | Mia passes | Gemini marks which rubric points the explanation covered. Code passes it at two thirds of the points or more. |
 
