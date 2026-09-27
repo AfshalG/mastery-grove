@@ -1,9 +1,10 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { Suspense, useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Text } from '@react-three/drei';
 import * as THREE from 'three';
 import { useGameStore } from '../../store/useGameStore';
 import { ConfidenceLevel } from '../../types/game';
+import { FONT_3D } from './fonts';
 
 interface StoneProps {
   index: number;
@@ -107,33 +108,30 @@ const AnswerStone: React.FC<StoneProps> = ({
               emissiveIntensity={0.6}
             />
           </mesh>
-          <Text
-            position={[0, 0, 0.28]}
-            fontSize={0.28}
-            color="#ffffff"
-            anchorX="center"
-            anchorY="middle"
-            fontWeight="bold"
-          >
-            {letter}
-          </Text>
+          <Suspense fallback={null}>
+            <Text font={FONT_3D} position={[0, 0, 0.28]} fontSize={0.28} color="#ffffff" anchorX="center" anchorY="middle">
+              {letter}
+            </Text>
+          </Suspense>
         </group>
 
         {/* Floating Choice Text snippet */}
-        <Text
-          position={[0, 1.25, 0]}
-          fontSize={0.22}
-          color="#f8fafc"
-          anchorX="center"
-          anchorY="middle"
-          maxWidth={2.4}
-          textAlign="center"
-          outlineWidth={0.03}
-          outlineColor="#0f172a"
-          fontWeight="bold"
-        >
-          {displayText}
-        </Text>
+        <Suspense fallback={null}>
+          <Text
+            font={FONT_3D}
+            position={[0, 1.25, 0]}
+            fontSize={0.22}
+            color="#f8fafc"
+            anchorX="center"
+            anchorY="middle"
+            maxWidth={2.4}
+            textAlign="center"
+            outlineWidth={0.03}
+            outlineColor="#0f172a"
+          >
+            {displayText}
+          </Text>
+        </Suspense>
       </group>
     </group>
   );

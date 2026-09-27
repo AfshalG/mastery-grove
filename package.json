@@ -17,6 +17,7 @@
     "test:e2e:headed": "playwright test --headed"
   },
   "dependencies": {
+    "@fontsource/nunito": "^5.3.0",
     "@google/genai": "^2.4.0",
     "@react-three/drei": "^10.7.9",
     "@react-three/fiber": "^9.8.1",

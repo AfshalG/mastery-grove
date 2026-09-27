@@ -170,6 +170,10 @@ interface GameStore {
   setScreen: (screen: 'start' | 'game' | 'teacher') => void;
   setAvatarPosition: (pos: [number, number, number]) => void;
   moveTo: (pos: [number, number, number], treeIdToOpen?: string) => void;
+  /** The avatar reached its walk target: clear it, and open the tree it was walking to, if any. */
+  arriveAtTarget: () => void;
+  /** Drop the walk target (the player took over with the keys). */
+  cancelWalk: () => void;
   openTree: (tree: TreeData) => void;
   closeTree: () => void;
   toggleQuestList: () => void;
@@ -391,6 +395,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const p = layout ? clampToBounds(layout, { x: pos[0], z: pos[2] }) : { x: pos[0], z: pos[2] };
     set({ targetPosition: [p.x, 0, p.z], targetTreeToOpen: treeIdToOpen || null });
   },
+  arriveAtTarget: () => {
+    const { targetTreeToOpen, trees } = get();
+    set({ targetPosition: null, targetTreeToOpen: null });
+    const tree = targetTreeToOpen ? trees.find((t) => t.id === targetTreeToOpen) : undefined;
+    if (tree) get().openTree(tree);
+  },
+  cancelWalk: () => set({ targetPosition: null, targetTreeToOpen: null }),
 
   openTree: (tree) => {
     const unlocked = get().getUnlockedConcepts();

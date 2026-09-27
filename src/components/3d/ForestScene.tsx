@@ -2,6 +2,7 @@ import React, { Suspense, useRef } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useGameStore } from '../../store/useGameStore';
+import { liveAvatar } from '../../game/liveAvatar';
 import { ForestTerrain } from './ForestTerrain';
 import { StudentAvatar } from './StudentAvatar';
 import { ThirdPersonCamera } from './ThirdPersonCamera';
@@ -9,6 +10,7 @@ import { TreeMesh } from './TreeMesh';
 import { GroveSign } from './GroveSign';
 import { AnswerStones } from './AnswerStones';
 import { VisualFraction3D } from './VisualFraction3D';
+import { hideServeAnswer } from '../../game/visuals';
 
 /**
  * The sun rides along with the player, so every grove gets shadows however long the trail is
@@ -20,9 +22,8 @@ const SunLight: React.FC = () => {
   useFrame(() => {
     const l = light.current;
     if (!l) return;
-    const [x, , z] = useGameStore.getState().avatarPosition;
-    l.position.set(x + 25, 35, z + 20);
-    l.target.position.set(x, 0, z);
+    l.position.set(liveAvatar.x + 25, 35, liveAvatar.z + 20);
+    l.target.position.set(liveAvatar.x, 0, liveAvatar.z);
     l.target.updateMatrixWorld();
   });
 
@@ -41,6 +42,7 @@ const SunLight: React.FC = () => {
       shadow-camera-top={40}
       shadow-camera-bottom={-40}
       shadow-bias={-0.0005}
+      shadow-normalBias={0.04}
       color="#fffbeb"
     />
   );
@@ -60,7 +62,7 @@ export const ForestScene: React.FC = () => {
   return (
     <div className="w-full h-full relative select-none">
       <Canvas
-        shadows
+        shadows="percentage"
         camera={{ position: [0, 6, 12], fov: 50, near: 0.1, far: 200 }}
         gl={{ antialias: true, alpha: false }}
         className="w-full h-full"
@@ -116,7 +118,7 @@ export const ForestScene: React.FC = () => {
 
           {/* Floating 3D fraction cake/bar above opened tree */}
           {selectedTree && selectedTree.visual && selectedTree.position && (
-            <VisualFraction3D visual={selectedTree.visual} position={selectedTree.position} />
+            <VisualFraction3D visual={hideServeAnswer(selectedTree.visual, selectedTree.kind)!} position={selectedTree.position} />
           )}
         </Suspense>
       </Canvas>
