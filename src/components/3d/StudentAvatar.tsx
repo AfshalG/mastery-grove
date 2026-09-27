@@ -53,7 +53,8 @@ export const StudentAvatar: React.FC = () => {
   const hopStart = useRef(-1); // -1: not hopping. -2: start on the next frame.
 
   useEffect(() => {
-    const blocked = () => isTyping() || useGameStore.getState().selectedTree !== null;
+    // Keys walk the avatar even with a question open (to reach the answer stones), but not over the feedback card.
+    const blocked = () => isTyping() || useGameStore.getState().showExplanationModal;
     const hop = () => {
       hopStart.current = -2;
       sounds.playStep();
@@ -72,7 +73,7 @@ export const StudentAvatar: React.FC = () => {
     // Switching windows mid-press never delivers a keyup, which used to leave the avatar walking forever.
     const onBlur = () => keys.current.clear();
     const onHop = () => {
-      if (useGameStore.getState().selectedTree === null) hop();
+      if (!useGameStore.getState().showExplanationModal) hop();
     };
 
     window.addEventListener('keydown', onDown);
@@ -108,7 +109,8 @@ export const StudentAvatar: React.FC = () => {
     if (k.has('a') || k.has('arrowleft')) dx -= 1;
     if (k.has('d') || k.has('arrowright')) dx += 1;
 
-    const free = store.selectedTree === null;
+    // Free to move unless feedback is showing, or a question without stones (serve-the-cake) is open.
+    const free = !store.showExplanationModal && (store.selectedTree === null || store.answerStones !== null);
     const turnShare = 1 - Math.exp(-14 * dt);
     let moving = false;
 
@@ -151,6 +153,8 @@ export const StudentAvatar: React.FC = () => {
 
     group.position.set(liveAvatar.x, 0, liveAvatar.z);
     group.rotation.y = heading.current;
+    liveAvatar.heading = heading.current;
+    liveAvatar.moving = moving;
 
     // Hop: a half-second bounce
     if (hopStart.current === -2) hopStart.current = now;

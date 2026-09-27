@@ -16,7 +16,8 @@ import {
 } from '../types/game';
 import { SAMPLE_WORLD } from '../data/sampleWorld';
 import { buildForest, plantExtraTrees } from '../game/forest';
-import { clampToBounds, type ForestLayout } from '../game/layout';
+import { approachPoint, clampToBounds, type ForestLayout, type Vec2 } from '../game/layout';
+import { stoneSpots } from '../game/stones';
 import { sanitizeVisual } from '../game/visuals';
 
 export function computeTutorPick(
@@ -132,6 +133,11 @@ interface GameStore {
 
   // UI & Modals
   selectedTree: TreeData | null;
+  /** Where the answer stones stand for the open question (one per choice); null when none are up. */
+  answerStones: Vec2[] | null;
+  /** The kid is standing on an answer stone before saying how sure they are. */
+  confidenceNudge: boolean;
+  setConfidenceNudge: (on: boolean) => void;
   selectedConfidence: ConfidenceLevel | null;
   setSelectedConfidence: (confidence: ConfidenceLevel | null) => void;
   questListOpen: boolean;
@@ -215,6 +221,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
   targetTreeToOpen: null,
 
   selectedTree: null,
+  answerStones: null,
+  confidenceNudge: false,
+  setConfidenceNudge: (on) => set({ confidenceNudge: on }),
   selectedConfidence: null,
   setSelectedConfidence: (confidence) => set({ selectedConfidence: confidence }),
   questListOpen: false,
@@ -420,8 +429,19 @@ export const useGameStore = create<GameStore>((set, get) => ({
       return;
     }
 
+    // Multiple-choice questions raise a row of answer stones between the kid and the tree.
+    const { layout, trees } = get();
+    let answerStones: Vec2[] | null = null;
+    if (layout && tree.position && tree.kind !== 'serve' && tree.choices.length > 0) {
+      const at = { x: tree.position[0], z: tree.position[2] };
+      const others = trees.filter((t) => t.id !== tree.id && t.position).map((t) => ({ x: t.position![0], z: t.position![2] }));
+      answerStones = stoneSpots(at, approachPoint(layout, at), tree.choices.length, others);
+    }
+
     set({
       selectedTree: tree,
+      answerStones,
+      questListOpen: false, // the list is for finding trees; it would sit under the question card
       selectedConfidence: null,
       diagnosisResult: null,
       diagnosisError: null,
@@ -434,6 +454,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   closeTree: () => {
     set({
       selectedTree: null,
+      answerStones: null,
       selectedConfidence: null,
       diagnosisResult: null,
       diagnosisError: null,
@@ -1502,6 +1523,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   dismissFeedback: () => {
     set({
       selectedTree: null,
+      answerStones: null,
       showExplanationModal: false,
       lastAnswerResult: null,
       diagnosisResult: null,

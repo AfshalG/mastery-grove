@@ -7,7 +7,7 @@ import { endSentence, shorten } from '../../game/text';
 import { answerComparison, hideServeAnswer } from '../../game/visuals';
 import { ConfidenceLevel, TreeData } from '../../types/game';
 import { FractionVisualSVG } from './FractionVisualSVG';
-import { ByteFace, Lantern, Leaf, Sprout } from './icons';
+import { ByteFace, FoxFace, Lantern, Leaf, Sprout } from './icons';
 
 const CONFIDENCE: Array<{ level: ConfidenceLevel; testId: string }> = [
   { level: 'Not sure', testId: 'confidence-not-sure' },
@@ -62,8 +62,12 @@ export const QuestionModal: React.FC = () => {
     world,
     predictions,
     toggleShowPredictions,
+    confidenceNudge,
+    hasStones,
   } = useGameStore(
     useShallow((s) => ({
+      confidenceNudge: s.confidenceNudge,
+      hasStones: s.answerStones !== null,
       selectedTree: s.selectedTree,
       selectedConfidence: s.selectedConfidence,
       setSelectedConfidence: s.setSelectedConfidence,
@@ -104,6 +108,21 @@ export const QuestionModal: React.FC = () => {
     setStudentWords('');
     setServedSlices(new Set());
   }, [selectedTree?.id]);
+
+  useEffect(() => {
+    if (!selectedTree || showExplanationModal || hasSubmitted) return;
+    const onKey = (e: KeyboardEvent) => {
+      const tag = document.activeElement?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      const pick = CONFIDENCE[Number(e.key) - 1];
+      if (pick) {
+        setSelectedConfidence(pick.level);
+        setConfidencePromptWarning(false);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selectedTree, showExplanationModal, hasSubmitted, setSelectedConfidence]);
 
   useEffect(() => {
     if (showExplanationModal && lastAnswerResult?.isCorrect) {
@@ -322,8 +341,15 @@ export const QuestionModal: React.FC = () => {
   const guessPct = currentPrediction ? Math.round(currentPrediction.pCorrect * 100) : null;
 
   return (
-    <div className={overlay}>
-      <div role="dialog" aria-labelledby="question-modal-title" className={card}>
+    // Phones: a sheet at the bottom. Tablets: under the top bar. Wide screens: docked left, so the explorer
+    // and the answer stones stay in view in the middle.
+    <div className="fixed z-40 inset-x-0 bottom-0 sm:bottom-auto sm:top-24 lg:right-auto lg:left-4 flex justify-center p-2 sm:px-4 lg:p-0 pointer-events-none">
+      <div
+        role="dialog"
+        aria-modal="false"
+        aria-labelledby="question-modal-title"
+        className="paper rise-in pointer-events-auto relative w-full max-w-xl lg:w-[27rem] max-h-[58dvh] sm:max-h-[calc(100dvh-7.5rem)] overflow-hidden flex flex-col rounded-3xl"
+      >
         <div className="flex items-center justify-between gap-3 px-5 py-3 border-b-2 border-paper-edge/70 bg-paper-deep/60">
           <h2 id="question-modal-title" className="flex flex-wrap items-center gap-2 font-black">
             <span>{concept?.questName || 'Grove tree'}</span>
@@ -338,7 +364,7 @@ export const QuestionModal: React.FC = () => {
           {selectedTree.visual && (
             <div className="flex justify-center">
               {/* No label on the picture: "4/8 shaded" would answer "what fraction is shaded?" */}
-              <FractionVisualSVG visual={hideServeAnswer(selectedTree.visual, selectedTree.kind)!} size={200} hideLabel className="w-full max-w-sm" />
+              <FractionVisualSVG visual={hideServeAnswer(selectedTree.visual, selectedTree.kind)!} size={160} hideLabel className="w-full max-w-xs" />
             </div>
           )}
 
@@ -364,10 +390,17 @@ export const QuestionModal: React.FC = () => {
             </div>
           )}
 
-          <div className={`rounded-2xl p-3.5 transition-colors ${confidencePromptWarning ? 'bg-sun-soft ring-2 ring-sun' : 'bg-paper-deep/70'}`}>
-            <div className="flex items-center justify-between mb-2">
-              <span className="font-extrabold">How sure are you?</span>
-              {confidencePromptWarning && <span className="text-sm font-bold text-sun-deep">Pick one first</span>}
+          <div className={`rounded-2xl p-3.5 transition-colors ${confidencePromptWarning || confidenceNudge ? 'bg-sun-soft ring-2 ring-sun' : 'bg-paper-deep/70'}`}>
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <span className="flex items-center gap-2 font-extrabold">
+                <FoxFace size={30} />
+                How sure are you?
+              </span>
+              {confidencePromptWarning || confidenceNudge ? (
+                <span className="text-sm font-bold text-sun-deep">Pick one first</span>
+              ) : (
+                <span className="hidden sm:inline text-xs font-semibold text-ink-soft">keys 1 · 2 · 3</span>
+              )}
             </div>
             <div className="grid grid-cols-3 gap-2">
               {CONFIDENCE.map(({ level, testId }) => (
@@ -421,7 +454,8 @@ export const QuestionModal: React.FC = () => {
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-2">
+            <div className="space-y-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-2">
               {selectedTree.choices.map((choice, idx) => {
                 const isSelected = selectedChoiceIdx === idx;
                 return (
@@ -440,6 +474,10 @@ export const QuestionModal: React.FC = () => {
                   </button>
                 );
               })}
+            </div>
+            {hasStones && !hasSubmitted && (
+              <p className="text-center text-sm font-semibold text-ink-soft">Step onto a stone to answer, or tap one here.</p>
+            )}
             </div>
           )}
         </div>

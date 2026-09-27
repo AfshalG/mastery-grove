@@ -91,3 +91,16 @@ export const PadArrow: React.FC<IconProps & { direction: 'up' | 'down' | 'left' 
     </svg>
   );
 };
+
+/** The fox companion's face, for the "how sure are you?" question. */
+export const FoxFace: React.FC<IconProps> = ({ size = 28, className }) => (
+  <svg viewBox="0 0 48 48" width={size} height={size} className={className} aria-hidden="true">
+    <path d="M8 6 L 17 16 L 12 22 Z" fill="#e36f1e" stroke={INK} strokeWidth="2" strokeLinejoin="round" />
+    <path d="M40 6 L 31 16 L 36 22 Z" fill="#e36f1e" stroke={INK} strokeWidth="2" strokeLinejoin="round" />
+    <path d="M24 42 L 7 20 C 10 12, 38 12, 41 20 Z" fill="#e36f1e" stroke={INK} strokeWidth="2.2" strokeLinejoin="round" />
+    <path d="M24 42 L 14 27 C 18 30, 30 30, 34 27 Z" fill="#fff1dd" />
+    <circle cx="17" cy="23" r="2.2" fill={INK} />
+    <circle cx="31" cy="23" r="2.2" fill={INK} />
+    <circle cx="24" cy="39" r="2.6" fill={INK} />
+  </svg>
+);

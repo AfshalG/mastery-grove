@@ -10,8 +10,8 @@ interface VisualFraction3DProps {
   position: [number, number, number];
 }
 
-// Floats above the treetop and above Byte's crystal (which sits at 4.5).
-const FLOAT_HEIGHT = 5.4;
+// Floats just above the treetop. Byte's crystal and the lantern hide while the question is open.
+const FLOAT_HEIGHT = 4.7;
 const SPONGE_HEIGHT = 0.45;
 const SLICE_GAP = 0.04; // radians between slices, so each one reads as its own piece
 

@@ -33,7 +33,8 @@ test('a wrong answer gets a guess at the thinking, a question back, and a teache
   // Tree 1: "Simplify 4/8". 1/8 is the divide-only-the-top mistake.
   await page.getByTestId('toggle-quest-list-btn').click();
   await page.getByTestId('quest-tree-t1_1').click();
-  await expect(page.getByText('Simplify the fraction 4/8')).toBeVisible();
+  // The tree list shows the same words, so wait for the question card itself.
+  await expect(page.getByRole('dialog')).toContainText('Simplify the fraction 4/8');
 
   await page.getByTestId('confidence-very-sure').click();
   await page.getByTestId('choice-3').click();
