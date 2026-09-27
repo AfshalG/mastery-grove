@@ -19,7 +19,7 @@ export function computeTutorPick(
   const open = trees.filter((t) => canOpenTree(t, unlockedConcepts).ok);
   if (open.length === 0) return { beaconId: null, reason: null };
 
-  const memory = open.find((t) => t.isMemorySprout);
+  const memory = open.find((t) => t.isMemorySprout || t.memoryDue);
   if (memory) return { beaconId: memory.id, reason: 'Do you still remember this one?' };
 
   const madeForYou = open.find((t) => t.isTargeted);

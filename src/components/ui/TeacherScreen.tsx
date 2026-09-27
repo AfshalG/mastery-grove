@@ -52,7 +52,11 @@ export const TeacherScreen: React.FC = () => {
     setScreen,
     deployTeacherQuest,
     teacherToast,
+    session,
+    startNextSession,
   } = useGameStore();
+  // A moment of "Session 2 started" on the button after the teacher starts the next session.
+  const [sessionStarted, setSessionStarted] = useState(false);
 
   const [selectedStudentId, setSelectedStudentId] = useState<string>('student-you');
   const [activeTab, setActiveTab] = useState<'heatmap' | 'flags'>('heatmap');
@@ -561,6 +565,20 @@ export const TeacherScreen: React.FC = () => {
             >
               {copiedBriefToast ? <Check className="w-4 h-4 text-leaf-deep" /> : <Copy className="w-4 h-4 text-ink-soft" />}
               <span>{copiedBriefToast ? 'Copied!' : 'Copy brief'}</span>
+            </button>
+
+            {/* Next session: trees due for a memory check come back as the Memory Quest */}
+            <button
+              onClick={() => {
+                startNextSession();
+                setSessionStarted(true);
+                setTimeout(() => setSessionStarted(false), 2500);
+              }}
+              data-testid="next-session-btn"
+              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-paper border border-paper-edge hover:bg-paper-deep text-ink text-xs font-bold transition-all shadow-[0_3px_0_var(--color-paper-edge)]"
+            >
+              <RefreshCw className="w-4 h-4" />
+              <span>{sessionStarted ? `Session ${session} started` : 'Start next session'}</span>
             </button>
 
             {/* End of session rundown button */}

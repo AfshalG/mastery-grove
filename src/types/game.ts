@@ -40,6 +40,7 @@ export interface TreeData {
   targetMisconceptionId?: string;
   answersSinceMiss?: number;     // Spacing counter: needs >= 2 to unlock
   nearTreeId?: string;           // Layout hint: plant this extra tree next to that one
+  memoryDue?: boolean;           // Back for a memory check in this session's Memory Quest (answered from memory)
 }
 
 export interface ConceptData {
@@ -168,6 +169,19 @@ export interface InterventionData {
   miniLessonBullets: string[];
   fiveMinuteActivity: string;
   pedagogicalInsight: string;
+}
+
+export type ReflectionRating = 1 | 2 | 3 | 4;
+
+export interface Reflection {
+  conceptId: string;
+  rating: ReflectionRating;
+  note: string;
+  /** Share of this grove's answers the kid got right when they reflected. */
+  accuracy: number;
+  feedback: string | null;
+  session: number;
+  at: number;
 }
 
 export interface WelcomeBackInfo {

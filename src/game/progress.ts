@@ -18,16 +18,26 @@ export function countCompletedGroves(concepts: ConceptData[], trees: TreeData[])
   return concepts.filter((c) => isGroveComplete(trees, c.id)).length;
 }
 
+/** A grove opens the next ones once this share of its own trees is grown. */
+export const UNLOCK_HEALTH = 0.6;
+
+/** Share of a grove's own trees that are grown right now (a wilted tree counts against it until it regrows). */
+export function groveHealth(trees: TreeData[], conceptId: string) {
+  const own = trees.filter((t) => t.conceptId === conceptId && !isExtraTree(t));
+  return own.length === 0 ? 0 : own.filter(isAnswered).length / own.length;
+}
+
 /**
- * Groves the kid can enter: every prerequisite is complete. A prerequisite with no trees of its own
- * (or one Gemini named but never made) counts as done, so a grove can never be locked for good.
+ * Groves the kid can enter: every prerequisite grove is at least 60% grown, so one hard question never blocks
+ * a kid. A prerequisite with no trees of its own (or one Gemini named but never made) counts as done, so a
+ * grove can never be locked for good.
  */
 export function unlockedConcepts(world: Pick<WorldData, 'concepts'>, trees: TreeData[]) {
   return world.concepts
     .filter((c) =>
       c.prerequisites.every((p) => {
         const hasOwnTrees = trees.some((t) => t.conceptId === p && !isExtraTree(t));
-        return !hasOwnTrees || isGroveComplete(trees, p);
+        return !hasOwnTrees || groveHealth(trees, p) >= UNLOCK_HEALTH;
       })
     )
     .map((c) => c.id);
@@ -55,7 +65,7 @@ export type OpenCheck = { ok: true } | { ok: false; reason: 'locked' | 'done' | 
  */
 export function canOpenTree(tree: TreeData, unlocked: string[]): OpenCheck {
   if (!unlocked.includes(tree.conceptId)) return { ok: false, reason: 'locked' };
-  if (isAnswered(tree)) return { ok: false, reason: 'done' };
+  if (isAnswered(tree) && !tree.memoryDue) return { ok: false, reason: 'done' };
   if (tree.state === 'withered') return { ok: false, reason: 'withered' };
   if (tree.state === 'sapling' && (tree.answersSinceMiss ?? 0) < SAPLING_SPACING) return { ok: false, reason: 'waiting' };
   return { ok: true };

@@ -10,6 +10,7 @@ import { TeacherScreen } from './components/ui/TeacherScreen';
 import { ForestScene } from './components/3d/ForestScene';
 import { HUD } from './components/ui/HUD';
 import { QuestionModal } from './components/ui/QuestionModal';
+import { ReflectionCard } from './components/ui/ReflectionCard';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
 import { sounds } from './utils/audio';
 
@@ -60,6 +61,7 @@ export default function App() {
       {/* Tree Question & Diagnosis Modal wrapped in Error Boundary */}
       <ErrorBoundary fallbackTitle="Question Dialogue">
         <QuestionModal />
+        <ReflectionCard />
       </ErrorBoundary>
     </div>
   );
