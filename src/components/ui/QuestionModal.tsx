@@ -182,8 +182,11 @@ export const QuestionModal: React.FC = () => {
     setShowRevisionInput(false);
   };
 
-  const overlay = 'fixed inset-0 z-50 flex items-end sm:items-center justify-center p-2 sm:p-4 bg-[#2f2a22]/35';
-  const card = 'paper rise-in relative w-full max-w-lg max-h-[92dvh] overflow-hidden flex flex-col rounded-3xl';
+  // The feedback card docks like the question card (left on wide screens, a bottom sheet on phones) with no dim,
+  // so the kid sees their tree blossom or wilt, and Professor Byte arrive beside it.
+  const overlay = 'fixed z-50 inset-x-0 bottom-0 sm:bottom-auto sm:top-24 lg:right-auto lg:left-4 flex justify-center p-2 sm:px-4 lg:p-0 pointer-events-none';
+  const card =
+    'paper rise-in pointer-events-auto relative w-full max-w-lg lg:w-[27rem] max-h-[70dvh] sm:max-h-[calc(100dvh-7.5rem)] overflow-hidden flex flex-col rounded-3xl';
 
   // After an answer
   if (showExplanationModal && lastAnswerResult) {

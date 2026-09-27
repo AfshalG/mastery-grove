@@ -67,8 +67,14 @@ export const AnswerStones: React.FC = () => {
       }
     }
 
+    // Stones (letters and all) shrink into the ground as they sink, and are gone once they're down.
     const y = -0.45 + rise.current * 0.45;
-    stoneRefs.current.forEach((g) => g && (g.position.y = y));
+    stoneRefs.current.forEach((g) => {
+      if (!g) return;
+      g.position.y = y;
+      g.scale.setScalar(0.5 + 0.5 * rise.current);
+      g.visible = rise.current > 0.02;
+    });
     fillRefs.current.forEach((m, i) => m && m.scale.setScalar(Math.max(0.001, state.current.fills[i] ?? 0)));
   });
 

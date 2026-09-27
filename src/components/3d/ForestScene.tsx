@@ -15,6 +15,7 @@ import { skinFor } from '../../game/skins';
 import { Sky } from './Sky';
 import { BackgroundForest } from './BackgroundForest';
 import { Fox } from './Fox';
+import { ProfessorByte } from './ProfessorByte';
 
 /**
  * The sun rides along with the player, so every grove gets shadows however long the trail is
@@ -89,6 +90,7 @@ export const ForestScene: React.FC = () => {
           {/* Student Avatar and the fox */}
           <StudentAvatar />
           <Fox />
+          <ProfessorByte />
 
           {/* Smooth Chase Camera */}
           <ThirdPersonCamera />
