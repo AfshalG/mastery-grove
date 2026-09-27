@@ -1,0 +1,98 @@
+import React, { Suspense } from 'react';
+import { Canvas } from '@react-three/fiber';
+import { useGameStore, getGroveCenter } from '../../store/useGameStore';
+import { ForestTerrain } from './ForestTerrain';
+import { StudentAvatar } from './StudentAvatar';
+import { ThirdPersonCamera } from './ThirdPersonCamera';
+import { TreeMesh } from './TreeMesh';
+import { GroveSign } from './GroveSign';
+import { AnswerStones } from './AnswerStones';
+import { VisualFraction3D } from './VisualFraction3D';
+
+export const ForestScene: React.FC = () => {
+  const { world, trees, selectedTree, getUnlockedConcepts } = useGameStore();
+
+  if (!world) return null;
+
+  const unlockedConcepts = getUnlockedConcepts();
+
+  return (
+    <div className="w-full h-full relative select-none">
+      <Canvas
+        shadows
+        camera={{ position: [0, 6, 12], fov: 50, near: 0.1, far: 200 }}
+        gl={{ antialias: true, alpha: false }}
+        className="w-full h-full"
+      >
+        <color attach="background" args={['#dbeafe']} />
+        <fog attach="fog" args={['#dbeafe', 20, 85]} />
+
+        {/* Ambient & Sun Lighting */}
+        <ambientLight intensity={0.75} color="#ffffff" />
+        <directionalLight
+          position={[25, 35, 20]}
+          intensity={1.25}
+          castShadow
+          shadow-mapSize-width={2048}
+          shadow-mapSize-height={2048}
+          shadow-camera-near={0.5}
+          shadow-camera-far={100}
+          shadow-camera-left={-40}
+          shadow-camera-right={40}
+          shadow-camera-top={40}
+          shadow-camera-bottom={-40}
+          shadow-bias={-0.0005}
+          color="#fffbeb"
+        />
+        <directionalLight position={[-20, 15, -20]} intensity={0.4} color="#bae6fd" />
+
+        <Suspense fallback={null}>
+          {/* Ground Terrain & Paths */}
+          <ForestTerrain />
+
+          {/* Student Avatar */}
+          <StudentAvatar />
+
+          {/* Smooth Chase Camera */}
+          <ThirdPersonCamera />
+
+          {/* Grove Signs */}
+          {world.concepts.map((concept, idx) => {
+            const center = getGroveCenter(idx);
+            const isLocked = !unlockedConcepts.includes(concept.id);
+            const conceptTrees = trees.filter(
+              (t) => t.conceptId === concept.id && !t.isSapling
+            );
+            const isComplete =
+              conceptTrees.length > 0 &&
+              conceptTrees.every((t) => t.state === 'healthy' || t.state === 'regrown');
+
+            return (
+              <GroveSign
+                key={`sign-${concept.id}`}
+                concept={concept}
+                position={[center[0], 0, center[2] + 4.8]}
+                isLocked={isLocked}
+                isComplete={isComplete}
+              />
+            );
+          })}
+
+          {/* All Trees */}
+          {trees.map((tree) => {
+            const isLocked = !unlockedConcepts.includes(tree.conceptId);
+            return <TreeMesh key={tree.id} tree={tree} isLocked={isLocked} />;
+          })}
+
+          {/* 3D Answer Stones rising around active tree */}
+          <AnswerStones />
+
+          {/* Floating 3D fraction cake/bar above opened tree */}
+          {selectedTree && selectedTree.visual && selectedTree.position && (
+            <VisualFraction3D visual={selectedTree.visual} position={selectedTree.position} />
+          )}
+        </Suspense>
+      </Canvas>
+    </div>
+  );
+};
