@@ -14,6 +14,7 @@ import {
   Activity,
   Award,
   AlertTriangle,
+  AlertCircle,
   Flame,
   FileText,
   Copy,

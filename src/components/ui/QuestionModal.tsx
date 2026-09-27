@@ -247,7 +247,7 @@ export const QuestionModal: React.FC = () => {
               {lastAnswerResult.tree.visual && (() => {
                 const comp = extractFractionsForComparison(
                   lastAnswerResult.tree.question,
-                  lastAnswerResult.choice,
+                  lastAnswerResult.chosenChoice,
                   lastAnswerResult.tree.visual,
                   lastAnswerResult.tree.serveConfig
                 );

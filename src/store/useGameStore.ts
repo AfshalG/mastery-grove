@@ -13,8 +13,6 @@ import {
   MisconceptionData,
   ThoughtProcessRecord,
   WelcomeBackInfo,
-  TeachBackResult,
-  MiaTeachSpot,
 } from '../types/game';
 import { SAMPLE_WORLD } from '../data/sampleWorld';
 
@@ -212,16 +210,6 @@ interface GameStore {
 
   // Sound cues
   soundTrigger: { type: 'correct' | 'wrong' | 'unlock'; time: number } | null;
-
-  // Mia Teach-Back
-  activeTeachSpot: MiaTeachSpot | null;
-  isGradingTeachBack: boolean;
-  teachBackResult: TeachBackResult | null;
-  teachBackCompletedGroves: number[];
-  openMiaTeachModal: (groveIndex: number) => void;
-  closeMiaTeachModal: () => void;
-  submitMiaExplanation: (explanation: string) => Promise<void>;
-  getMiaTeachSpots: () => MiaTeachSpot[];
 
   // Actions
   loadWorld: (world: WorldData) => void;
