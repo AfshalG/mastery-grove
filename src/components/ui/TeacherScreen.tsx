@@ -34,6 +34,7 @@ import {
   ClassmateData,
   QuestionAttempt,
   ThoughtProcessRecord,
+  TreeData,
   RundownReport,
   InterventionData,
   MisconceptionData,
@@ -64,7 +65,7 @@ export const TeacherScreen: React.FC = () => {
   const [selectedCell, setSelectedCell] = useState<{
     student: ClassmateData;
     misconception: MisconceptionData;
-    status: 'overcome' | 'active' | 'severe' | 'untested';
+    status: 'overcome' | 'clear' | 'active' | 'severe' | 'untested';
     strength: number;
   } | null>(null);
 
@@ -72,6 +73,7 @@ export const TeacherScreen: React.FC = () => {
   const [showInterventionModal, setShowInterventionModal] = useState(false);
   const [isLoadingIntervention, setIsLoadingIntervention] = useState(false);
   const [interventionData, setInterventionData] = useState<InterventionData | null>(null);
+  const [interventionError, setInterventionError] = useState<string | null>(null);
   const [copiedIntervention, setCopiedIntervention] = useState(false);
 
   // Rundown report state
@@ -84,250 +86,124 @@ export const TeacherScreen: React.FC = () => {
   // Export Brief notification toast
   const [copiedBriefToast, setCopiedBriefToast] = useState(false);
 
-  // Generate simulated classmates tailored to current world's concepts & misconceptions
+  // Sample classmates (labelled "sample" in the roster), built from this world's own trees and mix-ups.
   const classmates = useMemo<ClassmateData[]>(() => {
     if (!world || world.misconceptions.length === 0) return [];
-
     const m = world.misconceptions;
-    const t = world.trees;
+    const mcq = world.trees.filter((tr) => tr.kind !== 'serve' && tr.choices.length > 1);
+    if (mcq.length === 0) return [];
 
-    const m1 = m[0]?.id || 'm1';
-    const m2 = m[1]?.id || 'm2';
-    const m3 = m[2]?.id || 'm3';
-    const m4 = m[3]?.id || 'm4';
-    const m5 = m[4]?.id || 'm5';
-    const m6 = m[5]?.id || 'm6';
+    // A multiple-choice tree from the grove where a mix-up lives, rather than a fixed index.
+    const treeFor = (mis: MisconceptionData | undefined, nth = 0) => {
+      const inGrove = mcq.filter((tr) => tr.conceptId === mis?.conceptId);
+      return inGrove[nth] ?? inGrove[0] ?? mcq[0];
+    };
+    const wrongChoice = (tree: TreeData, preferred: number) =>
+      preferred !== tree.answerIndex ? preferred : (preferred + 1) % tree.choices.length;
+    const ago = (minutes: number) => Date.now() - minutes * 60_000;
+    const strengths = (values: number[]) => Object.fromEntries(m.map((x, i) => [x.id, values[i] ?? 0]));
 
-    const alexAttempts: QuestionAttempt[] = [
-      {
-        treeId: t[0]?.id || 't1',
-        question: t[0]?.question || 'Simplify fraction',
-        choice: t[0]?.choices[1] || 'Wrong choice',
-        choiceIndex: 1,
+    const wrong = (name: string, mis: MisconceptionData | undefined, thought: string, why: string, minutes: number, extra: Partial<ThoughtProcessRecord> = {}) => {
+      const tree = treeFor(mis);
+      const i = wrongChoice(tree, 0);
+      const attempt: QuestionAttempt = {
+        treeId: tree.id,
+        question: tree.question,
+        choice: tree.choices[i],
+        choiceIndex: i,
         correct: false,
         confidence: 'Very sure',
-        misconceptionId: m2,
-        misconceptionLabel: m[1]?.label || 'divides only the numerator',
-        hint: 'Are you sure? Check what happened to denominator?',
-        thoughtProcess: 'You divided only the top number by 2 and left the bottom number untouched.',
-        prediction: {
-          treeId: t[0]?.id || 't1',
-          pCorrect: 0.25,
-          predictedChoice: 1,
-          misconceptionId: m2,
-          why: 'Alex frequently overlooks converting the denominator.',
-        },
-        predictionHit: 'exact',
-        at: Date.now() - 1000 * 60 * 18,
-        correctAnswer: t[0] ? t[0].choices[t[0].answerIndex] : '',
-      },
-      {
-        treeId: t[1]?.id || 't2',
-        question: t[1]?.question || 'Equivalent fractions',
-        choice: t[1]?.choices[t[1].answerIndex] || 'Correct',
-        choiceIndex: t[1]?.answerIndex ?? 0,
-        correct: true,
-        confidence: 'Fairly sure',
-        misconceptionId: null,
+        misconceptionId: mis?.id ?? null,
+        misconceptionLabel: mis?.label,
         hint: null,
-        prediction: {
-          treeId: t[1]?.id || 't2',
-          pCorrect: 0.65,
-          predictedChoice: t[1]?.answerIndex ?? 0,
-          misconceptionId: null,
-          why: 'Alex understood simplest form with visual diagram.',
-        },
-        predictionHit: 'direction',
-        at: Date.now() - 1000 * 60 * 14,
-        correctAnswer: t[1] ? t[1].choices[t[1].answerIndex] : '',
-      },
-    ];
-
-    const alexFlags: ThoughtProcessRecord[] = [
-      {
-        id: 'flag-alex-1',
-        studentName: 'Alex Chen',
-        treeId: t[0]?.id || 't1',
-        question: t[0]?.question || 'Simplify fraction 4/8',
-        choice: t[0]?.choices[1] || '2/8',
-        misconceptionId: m2,
-        misconceptionLabel: m[1]?.label || 'divides only the numerator',
-        thoughtProcess: 'You divided only the top number by 2 and left the bottom number untouched.',
+        thoughtProcess: thought,
+        prediction: { treeId: tree.id, pCorrect: 0.2, predictedChoice: i, misconceptionId: mis?.id ?? null, why },
+        predictionHit: 'exact',
+        at: ago(minutes),
+        correctAnswer: tree.choices[tree.answerIndex],
+      };
+      const flag: ThoughtProcessRecord = {
+        id: `flag-${name}-${tree.id}`,
+        studentName: name,
+        treeId: tree.id,
+        question: tree.question,
+        choice: tree.choices[i],
+        misconceptionId: mis?.id ?? null,
+        misconceptionLabel: mis?.label,
+        thoughtProcess: thought,
         studentWords: null,
         confirmed: 'yes',
-        at: Date.now() - 1000 * 60 * 18,
-      },
-    ];
+        at: ago(minutes),
+        ...extra,
+      };
+      return { attempt, flag };
+    };
+    const right = (tree: TreeData, pCorrect: number, why: string, minutes: number): QuestionAttempt => ({
+      treeId: tree.id,
+      question: tree.question,
+      choice: tree.choices[tree.answerIndex],
+      choiceIndex: tree.answerIndex,
+      correct: true,
+      confidence: 'Fairly sure',
+      misconceptionId: null,
+      hint: null,
+      prediction: { treeId: tree.id, pCorrect, predictedChoice: tree.answerIndex, misconceptionId: null, why },
+      predictionHit: 'exact',
+      at: ago(minutes),
+      correctAnswer: tree.choices[tree.answerIndex],
+    });
 
-    const marcusAttempts: QuestionAttempt[] = [
-      {
-        treeId: t[4]?.id || 't5',
-        question: t[4]?.question || 'Which is larger: 3/4 or 5/8?',
-        choice: t[4]?.choices[0] || '5/8 because 5 is greater than 3',
-        choiceIndex: 0,
-        correct: false,
-        confidence: 'Very sure',
-        misconceptionId: m3,
-        misconceptionLabel: m[2]?.label || 'compares fractions by numerator alone',
-        hint: 'Are you sure? Check what size each fractional piece is!',
-        thoughtProcess: 'You looked at the numerators: 5 is greater than 3, so 5/8 appeared bigger.',
-        prediction: {
-          treeId: t[4]?.id || 't5',
-          pCorrect: 0.2,
-          predictedChoice: 0,
-          misconceptionId: m3,
-          why: 'Marcus looks only at the numerator 5 vs 3.',
-        },
-        predictionHit: 'exact',
-        at: Date.now() - 1000 * 60 * 16,
-        correctAnswer: t[4]?.choices[t[4].answerIndex] || '',
-      },
-    ];
-
-    const marcusFlags: ThoughtProcessRecord[] = [
-      {
-        id: 'flag-marcus-1',
-        studentName: 'Marcus Rodriguez',
-        treeId: t[4]?.id || 't5',
-        question: t[4]?.question || 'Which is larger: 3/4 or 5/8?',
-        choice: '5/8 because 5 > 3',
-        misconceptionId: m3,
-        misconceptionLabel: m[2]?.label || 'compares fractions by numerator alone',
-        thoughtProcess: 'You compared the top numbers 5 and 3, assuming larger numerator always wins.',
-        studentWords: null,
-        confirmed: 'yes',
-        at: Date.now() - 1000 * 60 * 16,
-      },
-    ];
-
-    const zoeAttempts: QuestionAttempt[] = [
-      {
-        treeId: t[8]?.id || 't9',
-        question: t[8]?.question || 'What is 1/2 + 1/3?',
-        choice: t[8]?.choices[0] || '2/5',
-        choiceIndex: 0,
-        correct: false,
-        confidence: 'Very sure',
-        misconceptionId: m5,
-        misconceptionLabel: m[4]?.label || 'adds numerators and denominators separately',
-        hint: 'Are you sure? Check if halves and thirds can be combined directly.',
-        thoughtProcess: 'You added top numbers (1+1=2) and bottom numbers (2+3=5) separately.',
-        prediction: {
-          treeId: t[8]?.id || 't9',
-          pCorrect: 0.15,
-          predictedChoice: 0,
-          misconceptionId: m5,
-          why: 'Student defaults to whole-number addition logic (1+1)/(2+3).',
-        },
-        predictionHit: 'exact',
-        at: Date.now() - 1000 * 60 * 22,
-        correctAnswer: t[8]?.choices[t[8].answerIndex] || '',
-      },
-    ];
-
-    const zoeFlags: ThoughtProcessRecord[] = [
-      {
-        id: 'flag-zoe-1',
-        studentName: 'Zoe Kim',
-        treeId: t[8]?.id || 't9',
-        question: t[8]?.question || 'What is 1/2 + 1/3?',
-        choice: '2/5',
-        misconceptionId: m5,
-        misconceptionLabel: m[4]?.label || 'adds numerators and denominators separately',
-        thoughtProcess: 'You added the numerators 1+1=2 and denominators 2+3=5 separately.',
-        studentWords: 'I thought fractions add straight across like multiplication.',
-        confirmed: 'no',
-        at: Date.now() - 1000 * 60 * 22,
-      },
-    ];
-
-    const sophiaAttempts: QuestionAttempt[] = [
-      {
-        treeId: t[0]?.id || 't1',
-        question: t[0]?.question || 'Simplify fraction 4/8',
-        choice: t[0]?.choices[t[0].answerIndex] || '1/2',
-        choiceIndex: t[0]?.answerIndex ?? 0,
-        correct: true,
-        confidence: 'Very sure',
-        misconceptionId: null,
-        hint: null,
-        prediction: {
-          treeId: t[0]?.id || 't1',
-          pCorrect: 0.88,
-          predictedChoice: t[0]?.answerIndex ?? 0,
-          misconceptionId: null,
-          why: 'Sophia demonstrates strong number sense.',
-        },
-        predictionHit: 'exact',
-        at: Date.now() - 1000 * 60 * 25,
-        correctAnswer: t[0] ? t[0].choices[t[0].answerIndex] : '',
-      },
-      {
-        treeId: t[4]?.id || 't5',
-        question: t[4]?.question || 'Comparing fractions',
-        choice: t[4]?.choices[t[4].answerIndex] || 'Correct',
-        choiceIndex: t[4]?.answerIndex ?? 0,
-        correct: true,
-        confidence: 'Very sure',
-        misconceptionId: null,
-        hint: null,
-        prediction: {
-          treeId: t[4]?.id || 't5',
-          pCorrect: 0.82,
-          predictedChoice: t[4]?.answerIndex ?? 0,
-          misconceptionId: null,
-          why: 'Sophia finds common denominators consistently.',
-        },
-        predictionHit: 'exact',
-        at: Date.now() - 1000 * 60 * 12,
-        correctAnswer: t[4]?.choices[t[4].answerIndex] || '',
-      },
-    ];
+    const alex = wrong('Alex Chen', m[1], 'You divided only the top number and left the bottom number the same.', 'Alex often skips the bottom number.', 18);
+    const marcus = wrong('Marcus Rodriguez', m[2], 'You compared the top numbers and picked the bigger one.', 'Marcus looks only at the top numbers.', 16);
+    const zoe = wrong('Zoe Kim', m[4], 'You added the top numbers and the bottom numbers separately.', 'Zoe adds fractions like whole numbers.', 22, {
+      studentWords: 'I thought fractions add straight across.',
+      confirmed: 'no',
+    });
 
     return [
       {
         id: 'student-alex',
         name: 'Alex Chen',
         avatarColor: '#3b82f6',
-        misconceptionStrength: { [m1]: 0, [m2]: 0.8, [m3]: 0.2, [m4]: 0, [m5]: 0.1, [m6]: 0 },
-        activeMisconceptionId: m2,
-        overcomeMisconceptions: [m1],
+        misconceptionStrength: strengths([0, 0.8, 0.2, 0, 0.1, 0]),
+        activeMisconceptionId: m[1]?.id ?? null,
+        overcomeMisconceptions: m[0] ? [m[0].id] : [],
         predictionStats: { exact: 3, direction: 2, miss: 1 },
-        attempts: alexAttempts,
-        flags: alexFlags,
+        attempts: [alex.attempt, right(treeFor(m[0], 1), 0.65, 'Alex got simplest form with the picture.', 14)],
+        flags: [alex.flag],
       },
       {
         id: 'student-sophia',
         name: 'Sophia Patel',
         avatarColor: '#10b981',
-        misconceptionStrength: { [m1]: 0, [m2]: 0, [m3]: 0.1, [m4]: 0, [m5]: 0, [m6]: 0 },
+        misconceptionStrength: strengths([0, 0, 0.1, 0, 0, 0]),
         activeMisconceptionId: null,
-        overcomeMisconceptions: [m1, m2],
+        overcomeMisconceptions: [m[0]?.id, m[1]?.id].filter((id): id is string => !!id),
         predictionStats: { exact: 5, direction: 1, miss: 0 },
-        attempts: sophiaAttempts,
+        attempts: [right(treeFor(m[0]), 0.88, 'Sophia has strong number sense.', 25), right(treeFor(m[2]), 0.82, 'Sophia finds common denominators.', 12)],
         flags: [],
       },
       {
         id: 'student-marcus',
         name: 'Marcus Rodriguez',
         avatarColor: '#f59e0b',
-        misconceptionStrength: { [m1]: 0.1, [m2]: 0, [m3]: 0.75, [m4]: 0.3, [m5]: 0, [m6]: 0 },
-        activeMisconceptionId: m3,
+        misconceptionStrength: strengths([0.1, 0, 0.75, 0.3, 0, 0]),
+        activeMisconceptionId: m[2]?.id ?? null,
         overcomeMisconceptions: [],
         predictionStats: { exact: 2, direction: 3, miss: 1 },
-        attempts: marcusAttempts,
-        flags: marcusFlags,
+        attempts: [marcus.attempt],
+        flags: [marcus.flag],
       },
       {
         id: 'student-zoe',
         name: 'Zoe Kim',
         avatarColor: '#ec4899',
-        misconceptionStrength: { [m1]: 0, [m2]: 0.1, [m3]: 0, [m4]: 0.2, [m5]: 0.85, [m6]: 0.1 },
-        activeMisconceptionId: m5,
+        misconceptionStrength: strengths([0, 0.1, 0, 0.2, 0.85, 0.1]),
+        activeMisconceptionId: m[4]?.id ?? null,
         overcomeMisconceptions: [],
         predictionStats: { exact: 2, direction: 2, miss: 2 },
-        attempts: zoeAttempts,
-        flags: zoeFlags,
+        attempts: [zoe.attempt],
+        flags: [zoe.flag],
       },
     ];
   }, [world]);
@@ -384,11 +260,13 @@ export const TeacherScreen: React.FC = () => {
       return t?.conceptId === conceptId;
     });
 
-    if (isOvercome) return { status: 'overcome' as const, strength: 0 };
+    const showedIt = st.attempts.some((a) => a.misconceptionId === misId) || st.flags.some((f) => f.misconceptionId === misId);
+
+    if (isOvercome || (showedIt && strength === 0)) return { status: 'overcome' as const, strength: 0 };
     if (strength >= 0.6) return { status: 'severe' as const, strength };
     if (strength > 0) return { status: 'active' as const, strength };
     if (!hasAttemptForConcept) return { status: 'untested' as const, strength: 0 };
-    return { status: 'overcome' as const, strength: 0 };
+    return { status: 'clear' as const, strength: 0 }; // answered, and never showed this mix-up
   };
 
   const getStudentAccuracy = (st: ClassmateData) => {
@@ -421,6 +299,8 @@ export const TeacherScreen: React.FC = () => {
     setIsLoadingIntervention(true);
     setShowInterventionModal(true);
     setCopiedIntervention(false);
+    setInterventionData(null);
+    setInterventionError(null);
 
     let targetName = '';
     let misconceptionLabel = '';
@@ -460,6 +340,7 @@ export const TeacherScreen: React.FC = () => {
       setInterventionData(data);
     } catch (e) {
       console.error('Intervention error:', e);
+      setInterventionError("Byte couldn't write this lesson plan just now. Try again in a moment.");
     } finally {
       setIsLoadingIntervention(false);
     }
@@ -542,7 +423,7 @@ export const TeacherScreen: React.FC = () => {
         label: m.label,
         affectedCount: affected.length,
         affectedStudents: affected.map((a) => a.name),
-        quotes: quotes.length > 0 ? quotes : [`Common misconception with ${m.label}`],
+        quotes,
       };
     });
 
@@ -613,7 +494,7 @@ export const TeacherScreen: React.FC = () => {
           label: m.label,
           affectedCount: affected.length,
           affectedStudents: affected.map((a) => a.name),
-          quotes: quotes.length > 0 ? quotes : [`Common misconception with ${m.label}`],
+          quotes,
         };
       });
 
@@ -841,6 +722,9 @@ export const TeacherScreen: React.FC = () => {
                   <span className="flex items-center gap-1">
                     <span className="w-3 h-3 rounded-xs bg-paper-deep border border-paper-edge" /> Gray = Untested
                   </span>
+                  <span className="flex items-center gap-1">
+                    <span className="w-3 h-3 rounded-xs bg-paper border border-leaf/30" /> Clear = answered, no mix-up
+                  </span>
                 </div>
               </div>
 
@@ -888,7 +772,10 @@ export const TeacherScreen: React.FC = () => {
                             let cellBadge = 'Untested';
                             let cellClass = 'bg-paper text-ink-soft border-paper-edge';
 
-                            if (status === 'overcome') {
+                            if (status === 'clear') {
+                              cellBadge = 'Clear';
+                              cellClass = 'bg-paper text-leaf-deep border-leaf/30';
+                            } else if (status === 'overcome') {
                               cellBadge = 'Overcome ✓';
                               cellClass = 'bg-leaf-soft text-leaf-deep border-leaf/40 font-bold';
                             } else if (status === 'severe') {
@@ -1453,6 +1340,8 @@ export const TeacherScreen: React.FC = () => {
                   </button>
                 </div>
               </div>
+            ) : interventionError ? (
+              <p className="py-10 text-center text-sm font-semibold text-berry-deep">{interventionError}</p>
             ) : null}
           </div>
         </div>

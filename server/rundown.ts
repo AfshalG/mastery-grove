@@ -9,39 +9,41 @@ export interface CompactMisconception {
   quotes?: string[];
 }
 
-/** Per-misconception counts, affected students and up to 3 thought-process quotes, from the raw class data. */
-export function buildCompactList(body: { compactSummary?: unknown; misconceptions?: any[]; allStudentData?: any[] }): CompactMisconception[] {
-  if (Array.isArray(body.compactSummary) && body.compactSummary.length > 0) return body.compactSummary;
+/**
+ * Per-misconception counts, affected students and up to 3 of their thought-process quotes.
+ * The teacher screen sends `misconceptionSummaries` it has already worked out; raw `allStudentData` is
+ * also accepted. (The server used to read only the raw form, so every rundown saw a class of nobody.)
+ */
+export function buildCompactList(body: {
+  compactSummary?: unknown;
+  misconceptionSummaries?: unknown;
+  misconceptions?: any[];
+  allStudentData?: any[];
+}): CompactMisconception[] {
+  if (Array.isArray(body.misconceptionSummaries) && body.misconceptionSummaries.length > 0) {
+    return body.misconceptionSummaries.map((m: any) => ({
+      id: m.misconceptionId ?? m.id,
+      label: m.label,
+      count: m.affectedCount ?? m.affectedStudents?.length ?? 0,
+      affectedStudents: Array.isArray(m.affectedStudents) ? m.affectedStudents : [],
+      quotes: Array.isArray(m.quotes) ? m.quotes.slice(0, 3) : [],
+    }));
+  }
+  if (Array.isArray(body.compactSummary) && body.compactSummary.length > 0) return body.compactSummary as CompactMisconception[];
   if (!Array.isArray(body.misconceptions)) return [];
 
   return body.misconceptions.map((m: any) => {
-    const affectedStudents: string[] = [];
+    const affected = new Set<string>();
     const quotes: string[] = [];
-
-    if (Array.isArray(body.allStudentData)) {
-      body.allStudentData.forEach((st: any) => {
-        const isAffected =
-          st.activeMisconception === m.id ||
-          st.recentAttempts?.some((a: any) => a.thoughtProcess && !a.correct) ||
-          st.flags?.some((f: any) => f.thoughtProcess);
-
-        if (isAffected) affectedStudents.push(st.name || 'Student');
-
-        if (Array.isArray(st.flags)) {
-          st.flags.forEach((f: any) => {
-            if (f.thoughtProcess && quotes.length < 3) quotes.push(f.thoughtProcess);
-          });
-        }
-      });
+    for (const st of body.allStudentData ?? []) {
+      // Only this mix-up's evidence: a flag or a wrong attempt diagnosed as it, or it being their active one.
+      const evidence = [...(st.flags ?? []), ...(st.recentAttempts ?? []).filter((a: any) => !a.correct)].filter(
+        (f: any) => f.misconceptionId === m.id
+      );
+      if (st.activeMisconception === m.id || evidence.length > 0) affected.add(st.name || 'Student');
+      for (const f of evidence) if (f.thoughtProcess && quotes.length < 3) quotes.push(f.thoughtProcess);
     }
-
-    return {
-      id: m.id,
-      label: m.label,
-      count: affectedStudents.length,
-      affectedStudents: Array.from(new Set(affectedStudents)),
-      quotes: quotes.slice(0, 3),
-    };
+    return { id: m.id, label: m.label, count: affected.size, affectedStudents: [...affected], quotes };
   });
 }
 
@@ -55,14 +57,15 @@ export function buildPlainCodeRundown(worldSubject: string, compactList: Compact
       ? quotes[0]
       : `Students exhibit confusion regarding ${item.label?.toLowerCase() || 'this concept'}.`;
 
+    // Most specific first: "compares ... by numerator" is about comparing, "adds numerators" about adding.
     let activity = 'Use visual fraction bars or paper-folding strips to model equivalent proportions concretely.';
     const lbl = (item.label || '').toLowerCase();
-    if (lbl.includes('numerator') || lbl.includes('simplif')) {
-      activity = '5-Minute Slicing Demo: Fold a paper strip in half, then fourths, then eighths to prove the shaded amount remains identical.';
-    } else if (lbl.includes('compare') || lbl.includes('denominator')) {
+    if (/compar|larger|bigger|greater|smaller/.test(lbl)) {
       activity = '5-Minute Denominator Duel: Compare 1/3 and 1/6 using real cake diagrams so students see fewer cuts = bigger slices.';
-    } else if (lbl.includes('add') || lbl.includes('plus') || lbl.includes('unlike')) {
+    } else if (/\badd|plus|sum|unlike/.test(lbl)) {
       activity = '5-Minute Common Ground Grid: Color 1/2 on a 6-grid (3 blocks) and 1/3 (2 blocks) to visually add 3/6 + 2/6 = 5/6.';
+    } else if (/numerator|denominator|simplif/.test(lbl)) {
+      activity = '5-Minute Slicing Demo: Fold a paper strip in half, then fourths, then eighths to prove the shaded amount remains identical.';
     }
 
     const students = Array.isArray(item.affectedStudents) && item.affectedStudents.length > 0
