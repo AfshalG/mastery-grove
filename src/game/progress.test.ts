@@ -9,6 +9,9 @@ import {
   isGroveComplete,
   rootTreeId,
   unlockedConcepts,
+  activeMisconception,
+  weakenMisconception,
+  worldFingerprint,
 } from './progress';
 
 const tree = (id: string, conceptId: string, state: TreeData['state'], extra: Partial<TreeData> = {}): TreeData => ({
@@ -125,5 +128,28 @@ describe('dedupeTreeIds', () => {
     const ids = dedupeTreeIds(trees).map((t) => t.id);
     expect(new Set(ids).size).toBe(3);
     expect(ids[0]).toBe('t1');
+  });
+});
+
+describe('activeMisconception', () => {
+  it('is the strongest mix-up above the threshold that is not already fixed', () => {
+    expect(activeMisconception({ m1: 0.2, m2: 0.7, m3: 0.5 }, [])).toBe('m2');
+    expect(activeMisconception({ m1: 0.2, m2: 0.7, m3: 0.5 }, ['m2'])).toBe('m3');
+    expect(activeMisconception({ m1: 0.2 }, [])).toBeNull();
+  });
+});
+
+describe('weakenMisconception', () => {
+  it('halves a mix-up on a right answer and lets a faint one reach zero', () => {
+    expect(weakenMisconception(0.8)).toBe(0.4);
+    expect(weakenMisconception(0.06)).toBe(0); // it used to halve forever and show "Active 1%"
+  });
+});
+
+describe('worldFingerprint', () => {
+  it('tells two worlds with the same title apart, so saves never mix', () => {
+    const other = { ...SAMPLE_WORLD, trees: SAMPLE_WORLD.trees.map((t, i) => (i === 0 ? { ...t, question: 'Simplify 6/12.' } : t)) };
+    expect(worldFingerprint(SAMPLE_WORLD)).toBe(worldFingerprint({ ...SAMPLE_WORLD }));
+    expect(worldFingerprint(other)).not.toBe(worldFingerprint(SAMPLE_WORLD));
   });
 });

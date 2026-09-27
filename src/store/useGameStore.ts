@@ -15,100 +15,24 @@ import {
   WelcomeBackInfo,
 } from '../types/game';
 import { SAMPLE_WORLD } from '../data/sampleWorld';
-import { buildForest, plantExtraTrees } from '../game/forest';
+import { buildForest, isExtraTree, plantExtraTrees } from '../game/forest';
 import { approachPoint, clampToBounds, type ForestLayout, type Vec2 } from '../game/layout';
 import { stoneSpots } from '../game/stones';
 import { sanitizeVisual } from '../game/visuals';
-
-export function computeTutorPick(
-  trees: TreeData[],
-  unlockedConcepts: string[],
-  predictions: Record<string, TreePrediction>,
-  activeMisconceptionId: string | null,
-  worldMisconceptions: MisconceptionData[]
-): { beaconId: string | null; reason: string | null } {
-  // Candidates are open trees in unlocked groves, saplings included (if spacing unlocked)
-  const openTrees = trees.filter(
-    (t) =>
-      unlockedConcepts.includes(t.conceptId) &&
-      t.state !== 'healthy' &&
-      t.state !== 'regrown' &&
-      !(t.state === 'sapling' && (t.answersSinceMiss ?? 0) < 2)
-  );
-
-  if (openTrees.length === 0) {
-    return { beaconId: null, reason: null };
-  }
-
-  // Priority 1: Memory Sprout retention checks
-  const memorySprout = openTrees.find((t) => t.isMemorySprout);
-  if (memorySprout) {
-    return {
-      beaconId: memorySprout.id,
-      reason: 'Do you still remember this one?',
-    };
-  }
-
-  // Priority 2: Targeted "Made for you" trees attacking the student's active thought flaw
-  const targetedCandidate = openTrees.find((t) => t.isTargeted);
-  if (targetedCandidate) {
-    return {
-      beaconId: targetedCandidate.id,
-      reason: 'made just for you',
-    };
-  }
-
-  const hasPredictions = openTrees.some((t) => !!predictions[t.id]);
-  if (!hasPredictions) {
-    return {
-      beaconId: openTrees[0].id,
-      reason: 'a good place to start',
-    };
-  }
-
-  // Priority 3: Candidate matching active misconception
-  if (activeMisconceptionId) {
-    const matchingCandidates = openTrees.filter(
-      (t) => predictions[t.id]?.misconceptionId === activeMisconceptionId
-    );
-
-    if (matchingCandidates.length > 0) {
-      matchingCandidates.sort((a, b) => {
-        const pA = predictions[a.id]?.pCorrect ?? 0.6;
-        const pB = predictions[b.id]?.pCorrect ?? 0.6;
-        return Math.abs(pA - 0.6) - Math.abs(pB - 0.6);
-      });
-      return {
-        beaconId: matchingCandidates[0].id,
-        reason: 'let\'s check that idea again',
-      };
-    }
-  }
-
-  // Priority 4: Candidate closest to 0.7 optimal learning challenge
-  const sortedByOptimalDifficulty = [...openTrees].sort((a, b) => {
-    const pA = predictions[a.id]?.pCorrect ?? 0.7;
-    const pB = predictions[b.id]?.pCorrect ?? 0.7;
-    return Math.abs(pA - 0.7) - Math.abs(pB - 0.7);
-  });
-
-  const picked = sortedByOptimalDifficulty[0];
-  const pred = predictions[picked.id];
-  let reason = 'just the right challenge';
-
-  if (pred?.misconceptionId) {
-    const m = worldMisconceptions.find((x) => x.id === pred.misconceptionId);
-    if (m) {
-      const shortDesc = m.label.length > 28 ? m.label.slice(0, 26) + '…' : m.label;
-      reason = `watch out for: ${shortDesc}`;
-    }
-  }
-
-  return {
-    beaconId: picked.id,
-    reason,
-  };
-}
+import { computeTutorPick } from '../game/planner';
+import {
+  SAPLING_SPACING,
+  activeMisconception,
+  canOpenTree,
+  countCompletedGroves,
+  currentStreak,
+  dedupeTreeIds,
+  isGroveComplete,
+  rootTreeId,
+  unlockedConcepts,
+  weakenMisconception,
+  worldFingerprint,
+} from '../game/progress';
 
 interface LastAnswerInfo {
   isCorrect: boolean;
@@ -163,7 +87,6 @@ interface GameStore {
   currentThoughtRecord: ThoughtProcessRecord | null;
   diagnosisResult: DiagnosisResponse | null;
   diagnosisError: string | null;
-  lastFailedPayload: any | null;
   lastAnswerResult: LastAnswerInfo | null;
   showExplanationModal: boolean;
   isRevising: boolean;
@@ -206,9 +129,35 @@ interface GameStore {
 /** Lets the correct-answer chime finish before a grove's unlock fanfare. */
 const UNLOCK_SOUND_DELAY_MS = 700;
 
-function getStorageKey(subject: string) {
-  return `mastery_grove_learner_${subject.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()}`;
+function getStorageKey(world: WorldData) {
+  return `mastery_grove_learner_${world.subject.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()}_${worldFingerprint(world)}`;
 }
+
+/** What gets saved for a learner, whenever any of it changes (see the subscription at the end of this file). */
+const SAVED_FIELDS = [
+  'attempts',
+  'thoughtProcessRecords',
+  'misconceptionStrength',
+  'activeMisconceptionId',
+  'overcomeMisconceptions',
+  'predictionStats',
+  'predictions',
+  'trees',
+] as const;
+
+/** Each diagnosis request gets a number; a reply for an older one updates the records but not the card. */
+let diagnosisSeq = 0;
+/** Each prediction request gets a number; only the newest reply is used. */
+let predictionSeq = 0;
+
+interface DiagnosisContext {
+  seq: number;
+  tree: TreeData;
+  chosenChoice: string;
+  saplingId: string;
+}
+/** The last diagnosis request, so Retry can resend it and apply the reply the same way. */
+let lastDiagnosis: { ctx: DiagnosisContext; payload: unknown } | null = null;
 
 export const useGameStore = create<GameStore>((set, get) => ({
   world: null,
@@ -247,7 +196,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
   currentThoughtRecord: null,
   diagnosisResult: null,
   diagnosisError: null,
-  lastFailedPayload: null,
   lastAnswerResult: null,
   showExplanationModal: false,
   isRevising: false,
@@ -255,17 +203,16 @@ export const useGameStore = create<GameStore>((set, get) => ({
   soundTrigger: null,
 
   loadWorld: (rawWorld: WorldData) => {
-    const storageKey = getStorageKey(rawWorld.subject);
+    // Unique tree ids, and every picture checked before anything draws it (a malformed one crashed the scene).
+    rawWorld = { ...rawWorld, trees: dedupeTreeIds(rawWorld.trees).map((t) => ({ ...t, visual: sanitizeVisual(t.visual) })) };
+
     let savedData: any = null;
     try {
-      const raw = localStorage.getItem(storageKey);
+      const raw = localStorage.getItem(getStorageKey(rawWorld));
       if (raw) savedData = JSON.parse(raw);
     } catch (e) {
-      console.warn('Could not read from localStorage:', e);
+      console.warn('Could not read saved progress:', e);
     }
-
-    // Check every picture before anything draws it; a malformed one used to crash the scene.
-    rawWorld = { ...rawWorld, trees: rawWorld.trees.map((t) => ({ ...t, visual: sanitizeVisual(t.visual) })) };
     const fresh = buildForest(rawWorld, rawWorld.trees);
     const defaultTrees = fresh.trees;
     let layout = fresh.layout;
@@ -302,18 +249,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
         layout = restored.layout;
       }
 
-      // Calculate streak: consecutive correct answers from top of attempts
-      let streak = 0;
-      for (const a of initialAttempts) {
-        if (a.correct) streak++;
-        else break;
-      }
-
-      // Count completed groves
-      const completedGrovesCount = rawWorld.concepts.filter((concept) => {
-        const cTrees = initialTrees.filter((t) => t.conceptId === concept.id && !t.isSapling && !t.isMemorySprout);
-        return cTrees.length > 0 && cTrees.every((t) => t.state === 'healthy' || t.state === 'regrown');
-      }).length;
+      const streak = currentStreak(initialAttempts);
+      const completedGrovesCount = countCompletedGroves(rawWorld.concepts, initialTrees);
 
       // Generate friendly Professor Byte memory text
       let watchPattern = 'You made great progress last time.';
@@ -332,12 +269,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
         thoughtPatternToWatch: watchPattern,
         unlockedGrovesCount: rawWorld.concepts.length,
         completedGrovesCount,
-        streak: Math.max(streak, 1),
+        streak,
       };
     }
 
-    const firstConceptId = rawWorld.concepts[0]?.id;
-    const initialUnlocked = [firstConceptId];
+    const initialUnlocked = unlockedConcepts(rawWorld, initialTrees);
     const initialPick = computeTutorPick(
       initialTrees,
       initialUnlocked,
@@ -375,23 +311,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
       saplingNotice: null,
     });
 
-    // Save initial state to localStorage
-    try {
-      localStorage.setItem(
-        storageKey,
-        JSON.stringify({
-          attempts: initialAttempts,
-          thoughtProcessRecords: initialThoughts,
-          misconceptionStrength: initialStrengths,
-          activeMisconceptionId: initialActiveMis,
-          overcomeMisconceptions: initialOvercome,
-          predictionStats: initialStats,
-          predictions: initialPredictions,
-          trees: initialTrees,
-        })
-      );
-    } catch (e) {}
-
     // Check for retention check memory sprouts and refresh predictions
     setTimeout(() => {
       get().checkAndPlantMemorySprouts();
@@ -420,12 +339,16 @@ export const useGameStore = create<GameStore>((set, get) => ({
   cancelWalk: () => set({ targetPosition: null, targetTreeToOpen: null }),
 
   openTree: (tree) => {
-    const unlocked = get().getUnlockedConcepts();
-    if (!unlocked.includes(tree.conceptId)) return;
-
-    if (tree.state === 'sapling' && (tree.answersSinceMiss ?? 0) < 2) {
-      const remaining = 2 - (tree.answersSinceMiss ?? 0);
-      get().setSaplingNotice(`This one comes back after ${remaining} more question${remaining > 1 ? 's' : ''}.`);
+    const check = canOpenTree(tree, get().getUnlockedConcepts());
+    if (!check.ok) {
+      if (check.reason === 'waiting') {
+        const remaining = SAPLING_SPACING - (tree.answersSinceMiss ?? 0);
+        get().setSaplingNotice(`This one comes back after ${remaining} more question${remaining > 1 ? 's' : ''}.`);
+      } else if (check.reason === 'done') {
+        get().setSaplingNotice('You already grew this one.');
+      } else if (check.reason === 'withered') {
+        get().setSaplingNotice('This one comes back as a sapling soon.');
+      }
       return;
     }
 
@@ -489,20 +412,15 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   refreshPredictions: async () => {
-    const { world, trees, attempts, thoughtProcessRecords, isPredicting } = get();
-    if (!world || isPredicting) return;
+    const { world, trees, attempts, thoughtProcessRecords } = get();
+    if (!world) return;
 
     const unlocked = get().getUnlockedConcepts();
-    const openTrees = trees.filter(
-      (t) =>
-        unlocked.includes(t.conceptId) &&
-        t.state !== 'healthy' &&
-        t.state !== 'regrown' &&
-        !(t.state === 'sapling' && (t.answersSinceMiss ?? 0) < 2)
-    );
-
+    const openTrees = trees.filter((t) => canOpenTree(t, unlocked).ok);
     if (openTrees.length === 0) return;
 
+    // A refresh made while another is in flight used to be dropped; now the newest one wins.
+    const seq = ++predictionSeq;
     set({ isPredicting: true });
 
     try {
@@ -525,6 +443,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         misconceptions: world.misconceptions,
         openTrees: openTrees.map((t) => ({
           id: t.id,
+          conceptId: t.conceptId,
           question: t.question,
           choices: t.choices,
           answerIndex: t.answerIndex,
@@ -542,6 +461,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       if (!res.ok) throw new Error(`Predict endpoint status ${res.status}`);
 
       const data = await res.json();
+      if (seq !== predictionSeq) return; // a newer refresh is on its way
       if (Array.isArray(data.predictions)) {
         const nextPreds = { ...get().predictions };
         data.predictions.forEach((p: TreePrediction) => {
@@ -555,34 +475,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
       }
     } catch (err) {
       console.warn('Background predictions update failed:', err);
-      set({ isPredicting: false });
+      if (seq === predictionSeq) set({ isPredicting: false });
     }
   },
 
   getUnlockedConcepts: () => {
     const { world, trees } = get();
-    if (!world) return [];
-
-    const unlocked: string[] = [];
-    world.concepts.forEach((concept) => {
-      if (concept.prerequisites.length === 0) {
-        unlocked.push(concept.id);
-        return;
-      }
-      const allPrereqsSatisfied = concept.prerequisites.every((prereqId) => {
-        const prereqOriginalTrees = trees.filter(
-          (t) => t.conceptId === prereqId && !t.isSapling && !t.isTargeted && !t.isTeacherDeployed && !t.isMemorySprout
-        );
-        if (prereqOriginalTrees.length === 0) return true;
-        return prereqOriginalTrees.every((t) => t.state === 'healthy' || t.state === 'regrown');
-      });
-
-      if (allPrereqsSatisfied) {
-        unlocked.push(concept.id);
-      }
-    });
-
-    return unlocked;
+    return world ? unlockedConcepts(world, trees) : [];
   },
 
   getCurrentGroveProgress: () => {
@@ -606,7 +505,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       }
     });
 
-    const groveTrees = trees.filter((t) => t.conceptId === activeConcept.id && !t.isSapling && !t.isMemorySprout);
+    const groveTrees = trees.filter((t) => t.conceptId === activeConcept.id && !isExtraTree(t));
     const answeredCount = groveTrees.filter((t) => t.state === 'healthy' || t.state === 'regrown').length;
 
     return {
@@ -622,11 +521,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (!world) return;
 
     world.concepts.forEach(async (concept, idx) => {
-      const originalTrees = trees.filter(
-        (t) => t.conceptId === concept.id && !t.isSapling && !t.isMemorySprout && !t.isTargeted && !t.isTeacherDeployed
-      );
-      const isComplete =
-        originalTrees.length > 0 && originalTrees.every((t) => t.state === 'healthy' || t.state === 'regrown');
+      const isComplete = isGroveComplete(trees, concept.id);
 
       const existingMemorySprout = trees.find((t) => t.conceptId === concept.id && t.isMemorySprout);
 
@@ -664,14 +559,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
                 groveIndex: idx,
               };
 
-              set((state) => ({
-                trees: [...state.trees, ...plantExtraTrees(state.layout, state.trees, [sproutTree])],
-                teacherToast: `A memory tree grew in ${concept.questName}. Do you still remember?`,
-              }));
-
-              setTimeout(() => {
-                set({ teacherToast: null });
-              }, 4500);
+              set((state) => ({ trees: [...state.trees, ...plantExtraTrees(state.layout, state.trees, [sproutTree])] }));
+              flashToast(`A memory tree grew in ${concept.questName}. Do you still remember?`);
 
               get().updateTutorBeacon();
             }
@@ -735,11 +624,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
       const nextState: TreeState =
         tree.state === 'withered' || tree.state === 'sapling' || tree.isSapling ? 'regrown' : 'healthy';
 
+      // A sapling answered right regrows the worksheet tree it came from, however many tries back.
+      const rootId = tree.isSapling ? rootTreeId(trees, tree) : null;
       const finalTrees: TreeData[] = updatedTreesWithSpacing.map((t) => {
         if (t.id === treeId) return { ...t, state: nextState };
-        if (tree.isSapling && tree.sourceTreeId && t.id === tree.sourceTreeId) {
-          return { ...t, state: 'regrown' };
-        }
+        if (rootId && rootId !== treeId && t.id === rootId) return { ...t, state: 'regrown' };
         return t;
       });
 
@@ -752,27 +641,17 @@ export const useGameStore = create<GameStore>((set, get) => ({
           nextOvercome.push(tree.targetMisconceptionId);
         }
         updatedStrengths[tree.targetMisconceptionId] = 0;
-        set({
-          teacherToast: 'You remembered! That mix-up is fixed.',
-        });
-        setTimeout(() => set({ teacherToast: null }), 4500);
+        flashToast('You remembered! That mix-up is fixed.');
       } else {
         // Regular tree correct: halve misconception strength for that concept
         world.misconceptions
           .filter((m) => m.conceptId === tree.conceptId)
           .forEach((m) => {
-            updatedStrengths[m.id] = (updatedStrengths[m.id] || 0) * 0.5;
+            updatedStrengths[m.id] = weakenMisconception(updatedStrengths[m.id] || 0);
           });
       }
 
-      let highestId: string | null = null;
-      let highestVal = 0.3;
-      Object.entries(updatedStrengths).forEach(([mId, val]) => {
-        if (val > highestVal && !nextOvercome.includes(mId)) {
-          highestVal = val;
-          highestId = mId;
-        }
-      });
+      const highestId = activeMisconception(updatedStrengths, nextOvercome);
 
       const attempt: QuestionAttempt = {
         treeId,
@@ -810,23 +689,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
         predictionStats: nextStats,
         soundTrigger: { type: 'correct', time: Date.now() },
       });
-
-      // Save to localStorage
-      try {
-        localStorage.setItem(
-          getStorageKey(world.subject),
-          JSON.stringify({
-            attempts: nextAttempts,
-            thoughtProcessRecords,
-            misconceptionStrength: updatedStrengths,
-            activeMisconceptionId: highestId,
-            overcomeMisconceptions: nextOvercome,
-            predictionStats: nextStats,
-            predictions,
-            trees: finalTrees,
-          })
-        );
-      } catch (e) {}
 
       const nextUnlocked = get().getUnlockedConcepts();
       if (nextUnlocked.length > prevUnlocked.length) {
@@ -913,138 +775,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
         memory,
       };
 
-      set({ lastFailedPayload: payload });
-
-      try {
-        const res = await fetch('/api/diagnose-thought-process', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          throw new Error(errData.error || `Server responded with status ${res.status}`);
-        }
-
-        const diagnosis: DiagnosisResponse = await res.json();
-        const misObj = world.misconceptions.find((m) => m.id === diagnosis.misconceptionId);
-
-        // Update strengths: Add 0.4
-        const updatedStrengths = { ...get().misconceptionStrength };
-        if (diagnosis.misconceptionId && diagnosis.misconceptionId !== 'unclassified') {
-          updatedStrengths[diagnosis.misconceptionId] = Math.min(
-            1,
-            (updatedStrengths[diagnosis.misconceptionId] || 0) + 0.4
-          );
-        }
-
-        let highestId: string | null = null;
-        let highestVal = 0.3;
-        Object.entries(updatedStrengths).forEach(([mId, val]) => {
-          if (val > highestVal && !overcomeMisconceptions.includes(mId)) {
-            highestVal = val;
-            highestId = mId;
-          }
-        });
-
-        // Create thought-process record
-        const recordId = `thought_${Date.now()}`;
-        const newRecord: ThoughtProcessRecord = {
-          id: recordId,
-          studentName: 'You',
-          treeId,
-          question: tree.question,
-          choice: chosenChoice,
-          misconceptionId: diagnosis.misconceptionId,
-          misconceptionLabel: misObj?.label || 'Unclassified misconception',
-          thoughtProcess: diagnosis.thoughtProcess,
-          studentWords: null,
-          confirmed: 'unanswered', // Always ask student to verify!
-          at: Date.now(),
-        };
-
-        const updatedThoughts = [newRecord, ...get().thoughtProcessRecords];
-
-        // Update latest attempt
-        const attempts = [...get().attempts];
-        if (attempts.length > 0 && attempts[0].treeId === treeId) {
-          attempts[0].misconceptionId = diagnosis.misconceptionId;
-          attempts[0].misconceptionLabel = misObj?.label || 'Unclassified misconception';
-          attempts[0].hint = diagnosis.scaffoldHint;
-          attempts[0].thoughtProcess = diagnosis.thoughtProcess;
-        }
-
-        set({
-          isDiagnosing: false,
-          diagnosisResult: diagnosis,
-          currentThoughtRecord: newRecord,
-          thoughtProcessRecords: updatedThoughts,
-          misconceptionStrength: updatedStrengths,
-          activeMisconceptionId: highestId,
-          attempts,
-        });
-
-        // TARGETED SAPLING GENERATION (Item 3 in requirements):
-        // Call Gemini to generate a variant question that directly targets this thought process with numbers changed and a slight twist!
-        fetch('/api/generate-targeted-sapling', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            originalQuestion: tree.question,
-            originalChoices: tree.choices,
-            thoughtProcess: diagnosis.thoughtProcess,
-            misconception: misObj,
-            worldSubject: world.subject,
-          }),
-        })
-          .then((r) => (r.ok ? r.json() : null))
-          .then((variant) => {
-            if (variant && variant.question && Array.isArray(variant.choices)) {
-              set((state) => ({
-                trees: state.trees.map((t) =>
-                  t.id === saplingId
-                    ? {
-                        ...t,
-                        question: variant.question,
-                        choices: variant.choices,
-                        answerIndex: variant.answerIndex,
-                        explanation: variant.explanation,
-                        visual: sanitizeVisual(variant.visual) ?? t.visual,
-                      }
-                    : t
-                ),
-              }));
-            }
-          })
-          .catch((e) => console.warn('Targeted sapling generation fallback to original:', e));
-
-        // Save to localStorage
-        try {
-          localStorage.setItem(
-            getStorageKey(world.subject),
-            JSON.stringify({
-              attempts,
-              thoughtProcessRecords: updatedThoughts,
-              misconceptionStrength: updatedStrengths,
-              activeMisconceptionId: highestId,
-              overcomeMisconceptions,
-              predictionStats: nextStats,
-              predictions: get().predictions,
-              trees: finalTrees,
-            })
-          );
-        } catch (e) {}
-
-        get().updateTutorBeacon();
-        get().refreshPredictions();
-      } catch (err: any) {
-        console.error('Diagnosis failed:', err);
-        set({
-          isDiagnosing: false,
-          diagnosisError: err?.message || 'Byte could not be reached.',
-        });
-      }
+      const ctx: DiagnosisContext = { seq: ++diagnosisSeq, tree, chosenChoice, saplingId };
+      lastDiagnosis = { ctx, payload };
+      await requestDiagnosis(ctx, payload);
     }
   },
 
@@ -1099,8 +832,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
       const nextState: TreeState =
         tree.state === 'withered' || tree.state === 'sapling' || tree.isSapling ? 'regrown' : 'healthy';
 
+      const rootId = tree.isSapling ? rootTreeId(trees, tree) : null;
       const finalTrees: TreeData[] = updatedTreesWithSpacing.map((t) => {
         if (t.id === treeId) return { ...t, state: nextState };
+        if (rootId && rootId !== treeId && t.id === rootId) return { ...t, state: 'regrown' };
         return t;
       });
 
@@ -1108,17 +843,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
       world.misconceptions
         .filter((m) => m.conceptId === tree.conceptId)
         .forEach((m) => {
-          updatedStrengths[m.id] = (updatedStrengths[m.id] || 0) * 0.5;
+          updatedStrengths[m.id] = weakenMisconception(updatedStrengths[m.id] || 0);
         });
 
-      let highestId: string | null = null;
-      let highestVal = 0.3;
-      Object.entries(updatedStrengths).forEach(([mId, val]) => {
-        if (val > highestVal && !overcomeMisconceptions.includes(mId)) {
-          highestVal = val;
-          highestId = mId;
-        }
-      });
+      const highestId = activeMisconception(updatedStrengths, overcomeMisconceptions);
 
       const attempt: QuestionAttempt = {
         treeId,
@@ -1155,23 +883,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
         predictionStats: nextStats,
         soundTrigger: { type: 'correct', time: Date.now() },
       });
-
-      // Save to localStorage
-      try {
-        localStorage.setItem(
-          getStorageKey(world.subject),
-          JSON.stringify({
-            attempts: nextAttempts,
-            thoughtProcessRecords,
-            misconceptionStrength: updatedStrengths,
-            activeMisconceptionId: highestId,
-            overcomeMisconceptions,
-            predictionStats: nextStats,
-            predictions,
-            trees: finalTrees,
-          })
-        );
-      } catch (e) {}
 
       const nextUnlocked = get().getUnlockedConcepts();
       if (nextUnlocked.length > prevUnlocked.length) {
@@ -1213,20 +924,20 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
       const finalTrees = [...updatedTrees, saplingTree];
 
-      const misObj = world.misconceptions.find((m) => m.conceptId === tree.conceptId) || world.misconceptions[0];
-      const misId = misObj?.id || 'm_serve';
+      // Only blame the mix-up this serve shows (it used to blame the concept's first one, whatever happened).
+      const conceptMix = world.misconceptions.filter((m) => m.conceptId === tree.conceptId);
+      const misObj =
+        servedCount === targetNumerator
+          ? conceptMix.find((m) => /numerator|top number/i.test(m.label))
+          : servedCount === targetDenominator
+            ? conceptMix.find((m) => /denominator|bottom number/i.test(m.label))
+            : undefined;
+      const misId = misObj?.id ?? null;
 
       const updatedStrengths = { ...get().misconceptionStrength };
-      updatedStrengths[misId] = Math.min(1, (updatedStrengths[misId] || 0) + 0.4);
+      if (misId) updatedStrengths[misId] = Math.min(1, (updatedStrengths[misId] || 0) + 0.4);
 
-      let highestId: string | null = null;
-      let highestVal = 0.3;
-      Object.entries(updatedStrengths).forEach(([mId, val]) => {
-        if (val > highestVal && !overcomeMisconceptions.includes(mId)) {
-          highestVal = val;
-          highestId = mId;
-        }
-      });
+      const highestId = activeMisconception(updatedStrengths, overcomeMisconceptions);
 
       const recordId = `thought_${Date.now()}`;
       const newRecord: ThoughtProcessRecord = {
@@ -1236,7 +947,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         question: tree.question,
         choice: chosenChoice,
         misconceptionId: misId,
-        misconceptionLabel: misObj?.label || 'Fraction portion vs slice count confusion',
+        misconceptionLabel: misObj?.label || 'Not sure which mix-up',
         thoughtProcess: exactDiagnosis,
         studentWords: null,
         confirmed: 'unanswered',
@@ -1270,7 +981,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         isDiagnosing: false,
         diagnosisError: null,
         diagnosisResult: {
-          misconceptionId: misId,
+          misconceptionId: misId ?? 'unclassified',
           confidence: 0.9,
           thoughtProcess: exactDiagnosis,
           scaffoldHint,
@@ -1291,23 +1002,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
         showExplanationModal: true,
         soundTrigger: { type: 'wrong', time: Date.now() },
       });
-
-      // Save to localStorage
-      try {
-        localStorage.setItem(
-          getStorageKey(world.subject),
-          JSON.stringify({
-            attempts: [preliminaryAttempt, ...get().attempts],
-            thoughtProcessRecords: updatedThoughts,
-            misconceptionStrength: updatedStrengths,
-            activeMisconceptionId: highestId,
-            overcomeMisconceptions,
-            predictionStats: nextStats,
-            predictions: get().predictions,
-            trees: finalTrees,
-          })
-        );
-      } catch (e) {}
 
       get().updateTutorBeacon();
       get().refreshPredictions();
@@ -1352,10 +1046,30 @@ export const useGameStore = create<GameStore>((set, get) => ({
             r.id === currentThoughtRecord.id ? updatedRecord : r
           );
 
+          const oldId = currentThoughtRecord.misconceptionId;
+          const newId = revised.misconceptionId && revised.misconceptionId !== 'unclassified' ? revised.misconceptionId : null;
+          const strengths = { ...get().misconceptionStrength };
+          if (oldId && oldId !== newId && strengths[oldId]) strengths[oldId] = Math.max(0, strengths[oldId] - 0.4);
+          if (newId && newId !== oldId) strengths[newId] = Math.min(1, (strengths[newId] || 0) + 0.4);
+          const attempts = get().attempts.slice();
+          const i = attempts.findIndex((a) => a.treeId === currentThoughtRecord.treeId && !a.correct);
+          if (i >= 0) {
+            attempts[i] = {
+              ...attempts[i],
+              misconceptionId: newId,
+              misconceptionLabel: misObj?.label,
+              thoughtProcess: revised.thoughtProcess,
+              hint: revised.scaffoldHint,
+            };
+          }
+
           set({
             isRevising: false,
             currentThoughtRecord: updatedRecord,
             thoughtProcessRecords: updatedThoughts,
+            misconceptionStrength: strengths,
+            activeMisconceptionId: activeMisconception(strengths, get().overcomeMisconceptions),
+            attempts,
             diagnosisResult: {
               misconceptionId: revised.misconceptionId,
               confidence: revised.confidence,
@@ -1476,14 +1190,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
             groveIndex: Math.max(0, conceptIdx),
           }));
 
-          set((state) => ({
-            trees: [...state.trees, ...plantExtraTrees(state.layout, state.trees, newQuestTrees)],
-            teacherToast: `Sent! ${newQuestTrees.length} new trees for "${mis.label}".`,
-          }));
-
-          setTimeout(() => {
-            set({ teacherToast: null });
-          }, 4500);
+          set((state) => ({ trees: [...state.trees, ...plantExtraTrees(state.layout, state.trees, newQuestTrees)] }));
+          flashToast(`Sent! ${newQuestTrees.length} new trees for "${mis.label}".`);
 
           get().updateTutorBeacon();
         }
@@ -1494,30 +1202,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   retryDiagnosis: async () => {
-    const { lastFailedPayload } = get();
-    if (!lastFailedPayload) return;
+    if (!lastDiagnosis) return;
     set({ isDiagnosing: true, diagnosisError: null });
-
-    try {
-      const res = await fetch('/api/diagnose-thought-process', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(lastFailedPayload),
-      });
-
-      if (!res.ok) throw new Error(`Diagnosis retry failed status ${res.status}`);
-      const diagnosis: DiagnosisResponse = await res.json();
-
-      set({
-        isDiagnosing: false,
-        diagnosisResult: diagnosis,
-      });
-    } catch (err: any) {
-      set({
-        isDiagnosing: false,
-        diagnosisError: err?.message || 'Retry failed. Check connection.',
-      });
-    }
+    await requestDiagnosis(lastDiagnosis.ctx, lastDiagnosis.payload);
   },
 
   dismissFeedback: () => {
@@ -1532,3 +1219,135 @@ export const useGameStore = create<GameStore>((set, get) => ({
     });
   },
 }));
+
+/** A short note for the kid. A newer note is never cleared by an older note's timer. */
+function flashToast(msg: string) {
+  useGameStore.setState({ teacherToast: msg });
+  setTimeout(() => {
+    if (useGameStore.getState().teacherToast === msg) useGameStore.setState({ teacherToast: null });
+  }, 4500);
+}
+
+/** Asks Gemini what the kid was thinking, then records it. The first try and Retry both come through here. */
+async function requestDiagnosis(ctx: DiagnosisContext, payload: unknown) {
+  try {
+    const res = await fetch('/api/diagnose-thought-process', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || `Server responded with status ${res.status}`);
+    }
+    applyDiagnosis(ctx, (await res.json()) as DiagnosisResponse);
+  } catch (err: any) {
+    console.error('Diagnosis failed:', err);
+    if (ctx.seq === diagnosisSeq) {
+      useGameStore.setState({ isDiagnosing: false, diagnosisError: err?.message || 'Byte could not be reached.' });
+    }
+  }
+}
+
+/**
+ * Records a diagnosis: the thought record (what the teacher sees), the mix-up's strength, the attempt, and a
+ * sapling variant aimed at the mix-up. If the kid has already moved on to another question, all of that is
+ * still recorded, but the open card is left alone.
+ */
+function applyDiagnosis(ctx: DiagnosisContext, diagnosis: DiagnosisResponse) {
+  const { world, overcomeMisconceptions } = useGameStore.getState();
+  if (!world) return;
+  const current = ctx.seq === diagnosisSeq;
+  const misObj = world.misconceptions.find((m) => m.id === diagnosis.misconceptionId);
+
+  const updatedStrengths = { ...useGameStore.getState().misconceptionStrength };
+  if (diagnosis.misconceptionId && diagnosis.misconceptionId !== 'unclassified') {
+    updatedStrengths[diagnosis.misconceptionId] = Math.min(1, (updatedStrengths[diagnosis.misconceptionId] || 0) + 0.4);
+  }
+
+  const record: ThoughtProcessRecord = {
+    id: `thought_${Date.now()}`,
+    studentName: 'You',
+    treeId: ctx.tree.id,
+    question: ctx.tree.question,
+    choice: ctx.chosenChoice,
+    misconceptionId: diagnosis.misconceptionId,
+    misconceptionLabel: misObj?.label || 'Unclassified misconception',
+    thoughtProcess: diagnosis.thoughtProcess,
+    studentWords: null,
+    confirmed: 'unanswered', // always ask the kid whether this is what they did
+    at: Date.now(),
+  };
+
+  // The newest wrong attempt on this tree gets the diagnosis (not simply the newest attempt: the kid may have moved on).
+  const attempts = useGameStore.getState().attempts.slice();
+  const i = attempts.findIndex((a) => a.treeId === ctx.tree.id && !a.correct);
+  if (i >= 0) {
+    attempts[i] = {
+      ...attempts[i],
+      misconceptionId: diagnosis.misconceptionId,
+      misconceptionLabel: misObj?.label || 'Unclassified misconception',
+      hint: diagnosis.scaffoldHint,
+      thoughtProcess: diagnosis.thoughtProcess,
+    };
+  }
+
+  useGameStore.setState({
+    thoughtProcessRecords: [record, ...useGameStore.getState().thoughtProcessRecords],
+    misconceptionStrength: updatedStrengths,
+    activeMisconceptionId: activeMisconception(updatedStrengths, overcomeMisconceptions),
+    attempts,
+    ...(current ? { isDiagnosing: false, diagnosisResult: diagnosis, currentThoughtRecord: record } : {}),
+  });
+
+  // The sapling comes back as a variant aimed at this exact mix-up, with the numbers changed.
+  fetch('/api/generate-targeted-sapling', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      originalQuestion: ctx.tree.question,
+      originalChoices: ctx.tree.choices,
+      thoughtProcess: diagnosis.thoughtProcess,
+      misconception: misObj,
+      worldSubject: world.subject,
+    }),
+  })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((variant) => {
+      if (!variant?.question || !Array.isArray(variant.choices)) return;
+      useGameStore.setState((state) => ({
+        trees: state.trees.map((t) =>
+          t.id === ctx.saplingId
+            ? {
+                ...t,
+                question: variant.question,
+                choices: variant.choices,
+                answerIndex: variant.answerIndex,
+                explanation: variant.explanation,
+                visual: sanitizeVisual(variant.visual) ?? t.visual,
+              }
+            : t
+        ),
+      }));
+    })
+    .catch((e) => console.warn('Targeted sapling generation fell back to the original question:', e));
+
+  useGameStore.getState().updateTutorBeacon();
+  useGameStore.getState().refreshPredictions();
+}
+
+// Save the learner's progress a moment after any of it changes, so nothing is lost between answers.
+let saveTimer: ReturnType<typeof setTimeout> | undefined;
+useGameStore.subscribe((state, prev) => {
+  if (!state.world || !SAVED_FIELDS.some((k) => state[k] !== prev[k])) return;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    const now = useGameStore.getState();
+    if (!now.world) return;
+    try {
+      localStorage.setItem(getStorageKey(now.world), JSON.stringify(Object.fromEntries(SAVED_FIELDS.map((k) => [k, now[k]]))));
+    } catch (e) {
+      console.warn('Could not save progress:', e);
+    }
+  }, 300);
+});

@@ -86,3 +86,38 @@ export function dedupeTreeIds<T extends { id: string }>(trees: T[]): T[] {
     return { ...t, id };
   });
 }
+
+/** A mix-up counts as active once its strength passes this. */
+const ACTIVE_THRESHOLD = 0.3;
+/** Below this a mix-up is treated as gone. */
+const FADED = 0.05;
+
+/** The mix-up Byte is chasing: the strongest one above the threshold that the kid hasn't already fixed. */
+export function activeMisconception(strengths: Record<string, number>, overcome: string[]): string | null {
+  let best: string | null = null;
+  let bestValue = ACTIVE_THRESHOLD;
+  for (const [id, value] of Object.entries(strengths)) {
+    if (value > bestValue && !overcome.includes(id)) {
+      best = id;
+      bestValue = value;
+    }
+  }
+  return best;
+}
+
+/** A right answer halves a mix-up's strength; a faint one drops to zero instead of lingering as "1%". */
+export function weakenMisconception(value: number) {
+  const next = value * 0.5;
+  return next < FADED ? 0 : next;
+}
+
+/** A short fingerprint of a world's questions, so saves for two worlds with the same title never mix. */
+export function worldFingerprint(world: Pick<WorldData, 'concepts' | 'trees'>) {
+  const text = [...world.concepts.map((c) => c.id), ...world.trees.map((t) => `${t.id}:${t.question}`)].join('|');
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(36);
+}
