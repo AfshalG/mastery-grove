@@ -178,20 +178,23 @@ interface Room {
 
 ## Layout rules
 
-Tree and sign overlaps were the most visible bug in the hackathon build, so layout is a pure function with tested invariants:
+Tree and sign overlaps were the most visible bug in the hackathon build, so layout is a pure function with tested invariants (`src/game/layout.ts`, constants in `LAYOUT`):
 
-1. Groves alternate left and right of a winding path, one clearing per concept. There's no limit on how many.
-2. Trees in a grove follow a golden-angle spiral (137.5°) with a radius that grows with each tree. Positions that fall in the sign's clear zone or the path corridor are skipped.
-3. Each grove's sign stands at its entrance beside the path, facing it.
-4. Saplings, teacher trees and memory trees take the first free spot from a list of candidates around their parent or the entrance.
+1. Groves alternate left and right of a winding trail, one clearing per concept. There's no limit on how many.
+2. A grove's own trees stand evenly on a ring. The ring leaves a 90° gap facing the trail, so the grove opens onto the path. The ring grows with the number of trees.
+3. Each grove's sign stands in that gap, beside the trail. It faces the player walking up the trail, turned 20° toward the path.
+4. Trees added during play take the first free spot on the grove's outer rings. Saplings and made-for-you trees go beside the tree they came from; memory trees go by the entrance.
+5. Positions are recomputed on every load. Saves never pin them.
+6. Flowers, mushrooms and rocks are scattered with a fixed seed. They stay off the trail, trees, signs and clearings.
 
-The invariants (tested for 1–12 groves and 1–15 trees per grove):
-- every pair of trees at least 2.5 apart
-- no tree within 3 of any sign
-- no tree within 3 of the path centreline
+The invariants (tested for 1–12 groves and 1–15 trees per grove, plus 24 extra trees in one grove):
+- every pair of trees at least 3 apart
+- no tree within 2.4 of a sign board
+- no tree within 3 of the trail's centreline
+- no sign board overhanging the trail
 - grove clearings don't overlap
 - everything inside the walkable bounds
-- the same world always gives the same layout
+- the same world always gives the same forest
 
 ## Gemini calls
 

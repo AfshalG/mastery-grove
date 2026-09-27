@@ -3,6 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useGameStore } from '../../store/useGameStore';
 import { sounds } from '../../utils/audio';
+import { clampToBounds } from '../../game/layout';
 
 export const StudentAvatar: React.FC = () => {
   const groupRef = useRef<THREE.Group>(null);
@@ -128,6 +129,11 @@ export const StudentAvatar: React.FC = () => {
       // Manual keyboard navigation overrides targetPosition
       const dir = new THREE.Vector3(moveX, 0, moveZ).normalize();
       currentPos.addScaledVector(dir, speed * delta);
+      const layout = useGameStore.getState().layout;
+      if (layout) {
+        const inside = clampToBounds(layout, { x: currentPos.x, z: currentPos.z });
+        currentPos.set(inside.x, currentPos.y, inside.z);
+      }
       isMoving = true;
 
       // Rotate avatar towards keyboard direction

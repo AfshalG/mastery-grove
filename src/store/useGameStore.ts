@@ -15,57 +15,8 @@ import {
   WelcomeBackInfo,
 } from '../types/game';
 import { SAMPLE_WORLD } from '../data/sampleWorld';
-
-// Helper to layout grove centers
-export function getGroveCenter(groveIndex: number): [number, number, number] {
-  const centers: [number, number, number][] = [
-    [0, 0, -6],       // Grove 0: Spring
-    [16, 0, -26],     // Grove 1: Bridge
-    [-6, 0, -48],     // Grove 2: Crossing
-    [12, 0, -70],     // Grove 3: Mountain (if 4 concepts)
-    [-10, 0, -92],    // Grove 4 fallback
-  ];
-  return centers[groveIndex] || [groveIndex * 15, 0, -groveIndex * 24];
-}
-
-// Layout trees in rings around grove centers
-export function layoutTrees(world: WorldData): TreeData[] {
-  const conceptIndexMap = new Map<string, number>();
-  world.concepts.forEach((c, idx) => conceptIndexMap.set(c.id, idx));
-
-  const treesByConcept = new Map<string, TreeData[]>();
-  world.concepts.forEach((c) => treesByConcept.set(c.id, []));
-
-  world.trees.forEach((t) => {
-    const arr = treesByConcept.get(t.conceptId) || [];
-    arr.push(t);
-    treesByConcept.set(t.conceptId, arr);
-  });
-
-  const positionedTrees: TreeData[] = [];
-
-  world.concepts.forEach((concept) => {
-    const groveIndex = conceptIndexMap.get(concept.id) ?? 0;
-    const center = getGroveCenter(groveIndex);
-    const conceptTrees = treesByConcept.get(concept.id) || [];
-    const count = conceptTrees.length;
-    const radius = 5.2;
-
-    conceptTrees.forEach((t, i) => {
-      const angle = (2 * Math.PI * i) / Math.max(count, 1) + Math.PI / 6;
-      const x = center[0] + Math.cos(angle) * radius;
-      const z = center[2] + Math.sin(angle) * radius;
-      positionedTrees.push({
-        ...t,
-        position: [x, 0, z],
-        groveIndex,
-        state: t.state || 'unanswered',
-      });
-    });
-  });
-
-  return positionedTrees;
-}
+import { buildForest, plantExtraTrees } from '../game/forest';
+import { clampToBounds, type ForestLayout } from '../game/layout';
 
 export function computeTutorPick(
   trees: TreeData[],
@@ -168,6 +119,8 @@ interface LastAnswerInfo {
 
 interface GameStore {
   world: WorldData | null;
+  /** Where groves, signs and the trail stand (src/game/layout.ts). Rebuilt whenever a world loads. */
+  layout: ForestLayout | null;
   trees: TreeData[];
   screen: 'start' | 'game' | 'teacher';
 
@@ -245,6 +198,7 @@ function getStorageKey(subject: string) {
 
 export const useGameStore = create<GameStore>((set, get) => ({
   world: null,
+  layout: null,
   trees: [],
   screen: 'start',
 
@@ -293,7 +247,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
       console.warn('Could not read from localStorage:', e);
     }
 
-    const defaultTrees = layoutTrees(rawWorld);
+    const fresh = buildForest(rawWorld, rawWorld.trees);
+    const defaultTrees = fresh.trees;
+    let layout = fresh.layout;
 
     let initialTrees = defaultTrees;
     let initialAttempts: QuestionAttempt[] = [];
@@ -320,7 +276,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
       initialActiveMis = savedData.activeMisconceptionId || null;
 
       if (Array.isArray(savedData.trees) && savedData.trees.length >= defaultTrees.length) {
-        initialTrees = savedData.trees;
+        // Keep saved progress but recompute every position, so older saves get the current layout.
+        const restored = buildForest(rawWorld, savedData.trees);
+        initialTrees = restored.trees;
+        layout = restored.layout;
       }
 
       // Calculate streak: consecutive correct answers from top of attempts
@@ -369,9 +328,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
     set({
       world: rawWorld,
+      layout,
       trees: initialTrees,
       screen: 'game',
-      avatarPosition: [0, 0, 2],
+      avatarPosition: [layout.spawn.x, 0, layout.spawn.z],
       targetPosition: null,
       targetTreeToOpen: null,
       selectedTree: null,
@@ -425,7 +385,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   setScreen: (screen) => set({ screen }),
   setAvatarPosition: (pos) => set({ avatarPosition: pos }),
-  moveTo: (pos, treeIdToOpen) => set({ targetPosition: pos, targetTreeToOpen: treeIdToOpen || null }),
+  moveTo: (pos, treeIdToOpen) => {
+    // Never aim outside the walkable area, or the avatar would try to walk off the map.
+    const layout = get().layout;
+    const p = layout ? clampToBounds(layout, { x: pos[0], z: pos[2] }) : { x: pos[0], z: pos[2] };
+    set({ targetPosition: [p.x, 0, p.z], targetTreeToOpen: treeIdToOpen || null });
+  },
 
   openTree: (tree) => {
     const unlocked = get().getUnlockedConcepts();
@@ -582,7 +547,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   getCurrentGroveProgress: () => {
-    const { world, trees, avatarPosition } = get();
+    const { world, layout, trees, avatarPosition } = get();
     if (!world || world.concepts.length === 0) {
       return { questName: 'Loading Grove', current: 0, total: 0 };
     }
@@ -593,8 +558,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
     world.concepts.forEach((concept, idx) => {
       if (!unlocked.includes(concept.id)) return;
-      const center = getGroveCenter(idx);
-      const dist = Math.hypot(avatarPosition[0] - center[0], avatarPosition[2] - center[2]);
+      const center = layout?.groves[idx]?.centre;
+      if (!center) return;
+      const dist = Math.hypot(avatarPosition[0] - center.x, avatarPosition[2] - center.z);
       if (dist < minDistance) {
         minDistance = dist;
         activeConcept = concept;
@@ -645,7 +611,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
             if (res.ok) {
               const qData = await res.json();
-              const center = getGroveCenter(idx);
               const sproutTree: TreeData = {
                 id: `memory_sprout_${concept.id}_${Date.now()}`,
                 conceptId: concept.id,
@@ -657,12 +622,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
                 state: 'unanswered',
                 isMemorySprout: true,
                 targetMisconceptionId: targetMis.id,
-                position: [center[0] - 3.8, 0, center[2] + 4.2],
                 groveIndex: idx,
               };
 
               set((state) => ({
-                trees: [...state.trees, sproutTree],
+                trees: [...state.trees, ...plantExtraTrees(state.layout, state.trees, [sproutTree])],
                 teacherToast: `Professor Byte planted a Memory Sprout at ${concept.questName} for a retention check! 🌿`,
               }));
 
@@ -840,26 +804,20 @@ export const useGameStore = create<GameStore>((set, get) => ({
         t.id === treeId ? { ...t, state: 'withered' as const } : t
       );
 
-      // Sprout sapling along path, starting with answersSinceMiss = 0
+      // Sprout a sapling beside the missed tree, starting with answersSinceMiss = 0
       const saplingId = `sapling_${tree.id}_${Date.now()}`;
       const groveIdx = tree.groveIndex ?? 0;
-      const center = getGroveCenter(groveIdx);
-      const nextCenter = getGroveCenter(groveIdx + 1);
-
-      const tFraction = 0.45;
-      const saplingX = center[0] + (nextCenter[0] - center[0]) * tFraction + (Math.random() - 0.5) * 3;
-      const saplingZ = center[2] + (nextCenter[2] - center[2]) * tFraction + (Math.random() - 0.5) * 3;
-
-      const saplingTree: TreeData = {
-        ...tree,
-        id: saplingId,
-        state: 'sapling',
-        isSapling: true,
-        sourceTreeId: tree.id,
-        position: [saplingX, 0, saplingZ],
-        groveIndex: groveIdx,
-        answersSinceMiss: 0, // Needs 2 more answers before opening
-      };
+      const [saplingTree] = plantExtraTrees(get().layout, updatedTrees, [
+        {
+          ...tree,
+          id: saplingId,
+          state: 'sapling',
+          isSapling: true,
+          sourceTreeId: tree.id,
+          groveIndex: groveIdx,
+          answersSinceMiss: 0, // Needs 2 more answers before opening
+        },
+      ]);
 
       const finalTrees = [...updatedTrees, saplingTree];
 
@@ -1199,25 +1157,20 @@ export const useGameStore = create<GameStore>((set, get) => ({
         t.id === treeId ? { ...t, state: 'withered' as const } : t
       );
 
-      // Sprout sapling
+      // Sprout a sapling beside the missed tree
       const saplingId = `sapling_${tree.id}_${Date.now()}`;
       const groveIdx = tree.groveIndex ?? 0;
-      const center = getGroveCenter(groveIdx);
-      const nextCenter = getGroveCenter(groveIdx + 1);
-      const tFraction = 0.45;
-      const saplingX = center[0] + (nextCenter[0] - center[0]) * tFraction + (Math.random() - 0.5) * 3;
-      const saplingZ = center[2] + (nextCenter[2] - center[2]) * tFraction + (Math.random() - 0.5) * 3;
-
-      const saplingTree: TreeData = {
-        ...tree,
-        id: saplingId,
-        state: 'sapling',
-        isSapling: true,
-        sourceTreeId: tree.id,
-        position: [saplingX, 0, saplingZ],
-        groveIndex: groveIdx,
-        answersSinceMiss: 0,
-      };
+      const [saplingTree] = plantExtraTrees(get().layout, updatedTrees, [
+        {
+          ...tree,
+          id: saplingId,
+          state: 'sapling',
+          isSapling: true,
+          sourceTreeId: tree.id,
+          groveIndex: groveIdx,
+          answersSinceMiss: 0,
+        },
+      ]);
 
       const finalTrees = [...updatedTrees, saplingTree];
 
@@ -1418,29 +1371,24 @@ export const useGameStore = create<GameStore>((set, get) => ({
           const data = await res.json();
           if (Array.isArray(data.questions)) {
             const groveIdx = tree?.groveIndex ?? 0;
-            const center = getGroveCenter(groveIdx);
 
-            const newTargetedTrees: TreeData[] = data.questions.map((q: any, i: number) => {
-              const angle = Math.PI / 4 + i * 0.5;
-              const radius = 7.0; // Slightly outside ring
-              return {
-                id: `targeted_${Date.now()}_${i}`,
-                conceptId,
-                question: q.question,
-                choices: q.choices,
-                answerIndex: q.answerIndex,
-                explanation: q.explanation,
-                citation: null,
-                state: 'unanswered',
-                isTargeted: true,
-                visual: q.visual,
-                position: [center[0] + Math.cos(angle) * radius, 0, center[2] + Math.sin(angle) * radius],
-                groveIndex: groveIdx,
-              };
-            });
+            const newTargetedTrees: TreeData[] = data.questions.map((q: any, i: number) => ({
+              id: `targeted_${Date.now()}_${i}`,
+              conceptId,
+              question: q.question,
+              choices: q.choices,
+              answerIndex: q.answerIndex,
+              explanation: q.explanation,
+              citation: null,
+              state: 'unanswered',
+              isTargeted: true,
+              visual: q.visual,
+              groveIndex: groveIdx,
+              nearTreeId: tree?.id, // grows beside the question that showed the mix-up
+            }));
 
             set((state) => ({
-              trees: [...state.trees, ...newTargetedTrees],
+              trees: [...state.trees, ...plantExtraTrees(state.layout, state.trees, newTargetedTrees)],
             }));
 
             get().updateTutorBeacon();
@@ -1474,29 +1422,23 @@ export const useGameStore = create<GameStore>((set, get) => ({
         const data = await res.json();
         if (Array.isArray(data.questions)) {
           const conceptIdx = world.concepts.findIndex((c) => c.id === mis.conceptId);
-          const center = getGroveCenter(Math.max(0, conceptIdx));
 
-          const newQuestTrees: TreeData[] = data.questions.map((q: any, i: number) => {
-            const angle = -Math.PI / 3 + i * 0.45;
-            const radius = 6.8;
-            return {
-              id: `teacher_quest_${Date.now()}_${i}`,
-              conceptId: mis.conceptId,
-              question: q.question,
-              choices: q.choices,
-              answerIndex: q.answerIndex,
-              explanation: q.explanation,
-              citation: null,
-              state: 'unanswered',
-              isTeacherDeployed: true,
-              visual: q.visual,
-              position: [center[0] + Math.cos(angle) * radius, 0, center[2] + Math.sin(angle) * radius],
-              groveIndex: Math.max(0, conceptIdx),
-            };
-          });
+          const newQuestTrees: TreeData[] = data.questions.map((q: any, i: number) => ({
+            id: `teacher_quest_${Date.now()}_${i}`,
+            conceptId: mis.conceptId,
+            question: q.question,
+            choices: q.choices,
+            answerIndex: q.answerIndex,
+            explanation: q.explanation,
+            citation: null,
+            state: 'unanswered',
+            isTeacherDeployed: true,
+            visual: q.visual,
+            groveIndex: Math.max(0, conceptIdx),
+          }));
 
           set((state) => ({
-            trees: [...state.trees, ...newQuestTrees],
+            trees: [...state.trees, ...plantExtraTrees(state.layout, state.trees, newQuestTrees)],
             teacherToast: `Quest deployed! 3 new trees planted for "${mis.label}".`,
           }));
 

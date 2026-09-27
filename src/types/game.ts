@@ -39,6 +39,7 @@ export interface TreeData {
   isMemorySprout?: boolean;      // "Memory Sprout" retention check question tree (cyan/emerald glow)
   targetMisconceptionId?: string;
   answersSinceMiss?: number;     // Spacing counter: needs >= 2 to unlock
+  nearTreeId?: string;           // Layout hint: plant this extra tree next to that one
 }
 
 export interface ConceptData {

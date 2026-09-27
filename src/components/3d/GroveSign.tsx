@@ -5,6 +5,8 @@ import { ConceptData } from '../../types/game';
 interface GroveSignProps {
   concept: ConceptData;
   position: [number, number, number];
+  /** Turns the board's front toward the trail (see GroveSpot.signRotationY). */
+  rotationY?: number;
   isLocked: boolean;
   isComplete: boolean;
 }
@@ -12,6 +14,7 @@ interface GroveSignProps {
 export const GroveSign: React.FC<GroveSignProps> = ({
   concept,
   position,
+  rotationY = 0,
   isLocked,
   isComplete,
 }) => {
@@ -26,7 +29,7 @@ export const GroveSign: React.FC<GroveSignProps> = ({
   const outlineColor = isLocked ? '#0f172a' : isComplete ? '#022c22' : '#291305';
 
   return (
-    <group position={position}>
+    <group position={position} rotation={[0, rotationY, 0]}>
       {/* Wooden Sign Post */}
       <mesh position={[0, 1.8, 0]} castShadow>
         <cylinderGeometry args={[0.16, 0.2, 3.6, 8]} />

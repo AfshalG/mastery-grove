@@ -3,6 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { TreeData } from '../../types/game';
 import { useGameStore } from '../../store/useGameStore';
+import { approachPoint } from '../../game/layout';
 
 interface TreeMeshProps {
   tree: TreeData;
@@ -17,7 +18,7 @@ export const TreeMesh: React.FC<TreeMeshProps> = ({ tree, isLocked }) => {
   const [hovered, setHovered] = useState(false);
   const opacityRef = useRef(1.0);
 
-  const { tutorBeaconTreeId, moveTo, setSaplingNotice, avatarPosition } = useGameStore();
+  const { tutorBeaconTreeId, moveTo, setSaplingNotice, avatarPosition, layout } = useGameStore();
   const isTutorsPick = tutorBeaconTreeId === tree.id;
 
   const position = tree.position || [0, 0, 0];
@@ -93,10 +94,10 @@ export const TreeMesh: React.FC<TreeMeshProps> = ({ tree, isLocked }) => {
       return;
     }
 
-    // Walk close to the tree and open it upon arrival
-    const [tx, ty, tz] = position;
-    const walkTarget: [number, number, number] = [tx, 0, tz + 1.8];
-    moveTo(walkTarget, tree.id);
+    // Walk to a spot just inside the clearing, facing the tree, and open it on arrival
+    const [tx, , tz] = position;
+    const stand = layout ? approachPoint(layout, { x: tx, z: tz }) : { x: tx, z: tz + 1.8 };
+    moveTo([stand.x, 0, stand.z], tree.id);
   };
 
   // Color & Geometry styling based on state and tags
