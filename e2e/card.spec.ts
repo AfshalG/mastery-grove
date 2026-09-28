@@ -9,7 +9,8 @@ test('a serve-the-cake question shows an uncut cake, not the answer', async ({ p
 
   const dialog = page.getByRole('dialog');
   await expect(dialog).toContainText('Serve');
-  await expect(dialog.locator('svg path[fill="#f472b6"]')).toHaveCount(0);
+  // No iced (shaded) slice: that would show how much to serve.
+  await expect(dialog.locator('svg path[fill="#e46f92"]')).toHaveCount(0);
 });
 
 test('a two-cake question fits a phone screen', async ({ page }, testInfo) => {

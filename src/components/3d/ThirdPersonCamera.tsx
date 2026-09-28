@@ -10,6 +10,8 @@ const OFFSET = { y: 5.8, z: 8.2 };
 // With a question open the camera eases up and back, so all the answer stones are in view.
 const QUESTION_OFFSET = { y: 7.6, z: 10.4 };
 const LOOK_HEIGHT = 1.3;
+/** Above and in front of a serve challenge (it floats 4.7 over its tree), looking down at it. */
+const SERVE_VIEW = { y: 8.9, z: 5.2, lookAt: 4.6 };
 const FOLLOW_RATE = 5;
 const LOOK_RATE = 6.3;
 /** Wide screens dock cards on the left, 28rem with the margin: centre the picture in the space to their right. */
@@ -36,13 +38,22 @@ export const ThirdPersonCamera: React.FC = () => {
       fx = (fx + grove.centre.x) / 2;
       fz = (fz + grove.centre.z) / 2;
     }
+
+    // A hands-on serve: look down on the cake (or bridge) floating over the tree, so every slice can be seen and tapped.
+    const serveTree = selectedTree?.kind === 'serve' && selectedTree.position ? selectedTree.position : null;
+    if (serveTree) {
+      fx = serveTree[0];
+      fz = serveTree[2];
+      desired.current.set(fx, serveTree[1] + SERVE_VIEW.y, fz + SERVE_VIEW.z);
+      lookGoal.current.set(fx, serveTree[1] + SERVE_VIEW.lookAt, fz);
+    } else {
+      desired.current.set(fx, offset.y, fz + offset.z);
+      lookGoal.current.set(fx, LOOK_HEIGHT, fz);
+    }
+    state.camera.position.lerp(desired.current, 1 - Math.exp(-FOLLOW_RATE * dt));
+    lookTarget.current.lerp(lookGoal.current, 1 - Math.exp(-LOOK_RATE * dt));
     cameraFocus.x = fx;
     cameraFocus.z = fz;
-
-    desired.current.set(fx, offset.y, fz + offset.z);
-    state.camera.position.lerp(desired.current, 1 - Math.exp(-FOLLOW_RATE * dt));
-    lookGoal.current.set(fx, LOOK_HEIGHT, fz);
-    lookTarget.current.lerp(lookGoal.current, 1 - Math.exp(-LOOK_RATE * dt));
     state.camera.lookAt(lookTarget.current);
 
     // While a card is up, shift the lens (not the camera) so the kid stays in the part of the screen it doesn't

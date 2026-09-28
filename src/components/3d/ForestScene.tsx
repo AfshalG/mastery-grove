@@ -1,5 +1,5 @@
 import React, { Suspense, useRef } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useGameStore } from '../../store/useGameStore';
 import { liveAvatar } from '../../game/liveAvatar';
@@ -9,7 +9,7 @@ import { ThirdPersonCamera } from './ThirdPersonCamera';
 import { TreeMesh } from './TreeMesh';
 import { GroveSign } from './GroveSign';
 import { AnswerStones } from './AnswerStones';
-import { VisualFraction3D } from './VisualFraction3D';
+import { ServeChallenge3D, VisualFraction3D } from './VisualFraction3D';
 import { hideServeAnswer } from '../../game/visuals';
 import { skinFor } from '../../game/skins';
 import { Sky } from './Sky';
@@ -54,6 +54,18 @@ const SunLight: React.FC<{ color: string }> = ({ color }) => {
       color={color}
     />
   );
+};
+
+/**
+ * With ?debug=1, tests can reach the camera and screen size, to tap things in the 3D scene (a cake slice, say)
+ * by projecting their positions onto the screen.
+ */
+const DebugHandle: React.FC = () => {
+  const camera = useThree((s) => s.camera);
+  const size = useThree((s) => s.size);
+  const debug = (window as Window & { __mg?: Record<string, unknown> }).__mg;
+  if (debug) debug.three = { camera, size };
+  return null;
 };
 
 export const ForestScene: React.FC = () => {
@@ -102,6 +114,7 @@ export const ForestScene: React.FC = () => {
 
           {/* Smooth Chase Camera */}
           <ThirdPersonCamera />
+          <DebugHandle />
 
           {/* Grove signs stand at each grove's entrance, beside the trail */}
           {layout.groves.map((grove) => {
@@ -134,9 +147,12 @@ export const ForestScene: React.FC = () => {
           {/* 3D Answer Stones rising around active tree */}
           <AnswerStones />
 
-          {/* Floating 3D fraction cake/bar above opened tree */}
-          {selectedTree && selectedTree.visual && selectedTree.position && (
-            <VisualFraction3D visual={hideServeAnswer(selectedTree.visual, selectedTree.kind)!} position={selectedTree.position} />
+          {/* Over the open tree: the hands-on cake or bridge for a serve challenge, or the question's picture */}
+          {selectedTree?.position && selectedTree.kind === 'serve' && selectedTree.serveConfig ? (
+            <ServeChallenge3D config={selectedTree.serveConfig} position={selectedTree.position} />
+          ) : (
+            selectedTree?.visual &&
+            selectedTree.position && <VisualFraction3D visual={hideServeAnswer(selectedTree.visual, selectedTree.kind)!} position={selectedTree.position} />
           )}
         </Suspense>
       </Canvas>

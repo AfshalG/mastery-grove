@@ -6,6 +6,7 @@ import { useGameStore } from '../../store/useGameStore';
 import { endSentence, shorten } from '../../game/text';
 import { calibrationLine } from '../../game/memory';
 import { answerComparison, hideServeAnswer } from '../../game/visuals';
+import { diagnoseServe } from '../../game/serve';
 import { ConfidenceLevel, TreeData } from '../../types/game';
 import { FractionVisualSVG } from './FractionVisualSVG';
 import { ByteFace, FoxFace, Lantern, Leaf, Sprout } from './icons';
@@ -67,8 +68,12 @@ export const QuestionModal: React.FC = () => {
     hasStones,
     choicesHidden,
     revealChoices,
+    servedList,
+    toggleServeSlice,
   } = useGameStore(
     useShallow((s) => ({
+      servedList: s.servedSlices,
+      toggleServeSlice: s.toggleServeSlice,
       choicesHidden: s.choicesHidden,
       revealChoices: s.revealChoices,
       confidenceNudge: s.confidenceNudge,
@@ -99,7 +104,6 @@ export const QuestionModal: React.FC = () => {
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [confidencePromptWarning, setConfidencePromptWarning] = useState(false);
   const [showByteWhy, setShowByteWhy] = useState(false);
-  const [servedSlices, setServedSlices] = useState<Set<number>>(new Set());
   const [showRevisionInput, setShowRevisionInput] = useState(false);
   const [studentWords, setStudentWords] = useState('');
 
@@ -111,7 +115,6 @@ export const QuestionModal: React.FC = () => {
     setShowRevisionInput(false);
     setShowByteWhy(false);
     setStudentWords('');
-    setServedSlices(new Set());
   }, [selectedTree?.id]);
 
   useEffect(() => {
@@ -155,14 +158,10 @@ export const QuestionModal: React.FC = () => {
     await answerTreeQuestion(selectedTree.id, idx, selectedConfidence);
   };
 
+  // Slices (or planks) can be picked here or on the 3D cake above the tree; the store keeps one list for both.
+  const servedSlices = new Set(servedList);
   const handleServeToggleSlice = (sliceIndex: number) => {
-    if (hasSubmitted) return;
-    setServedSlices((prev) => {
-      const next = new Set(prev);
-      if (next.has(sliceIndex)) next.delete(sliceIndex);
-      else next.add(sliceIndex);
-      return next;
-    });
+    if (!hasSubmitted) toggleServeSlice(sliceIndex);
   };
 
   const handleServeSubmit = async () => {
@@ -196,6 +195,7 @@ export const QuestionModal: React.FC = () => {
   // After an answer
   if (showExplanationModal && lastAnswerResult) {
     const isCorrect = lastAnswerResult.isCorrect;
+    const exactServe = lastAnswerResult.served !== undefined;
 
     return (
       <div className={overlay}>
@@ -218,6 +218,11 @@ export const QuestionModal: React.FC = () => {
                 <h2 id="feedback-title" className="text-2xl font-black">
                   Yes! That's it.
                 </h2>
+                {lastAnswerResult.served !== undefined && lastAnswerResult.tree.serveConfig && (
+                  <p className="text-base font-extrabold" data-testid="serve-result">
+                    {diagnoseServe(lastAnswerResult.tree.serveConfig, lastAnswerResult.served).line}
+                  </p>
+                )}
                 <p className="text-sm font-bold text-leaf-deep">{calibrationLine(lastAnswerResult.confidence, true)}</p>
                 <p className="text-base text-ink-soft max-w-xs">
                   {shorten(lastAnswerResult.tree.explanation || 'Dividing top and bottom keeps the portion equal.', 24)}
@@ -244,15 +249,17 @@ export const QuestionModal: React.FC = () => {
                       lastAnswerResult.tree.serveConfig
                     );
                     if (!comp) return null;
+                    // A bridge challenge compares rows of planks; everything else compares cakes.
+                    const pictureKind = lastAnswerResult.tree.serveConfig?.whole === 'bridge' ? 'bar' : 'cake';
                     return (
                       <div className="flex items-start justify-center gap-5">
                         <div className="flex flex-col items-center gap-1">
                           <span className="text-sm font-bold text-ink-soft">You made</span>
-                          <FractionVisualSVG visual={{ kind: 'cake', ...comp.kid }} size={88} hideLabel />
+                          <FractionVisualSVG visual={{ kind: pictureKind, ...comp.kid }} size={88} hideLabel />
                         </div>
                         <div className="flex flex-col items-center gap-1">
                           <span className="text-sm font-bold text-ink-soft">{comp.targetLabel} looks like</span>
-                          <FractionVisualSVG visual={{ kind: 'cake', ...comp.target }} size={88} hideLabel />
+                          <FractionVisualSVG visual={{ kind: pictureKind, ...comp.target }} size={88} hideLabel />
                         </div>
                       </div>
                     );
@@ -275,6 +282,14 @@ export const QuestionModal: React.FC = () => {
                       <>
                         {(() => {
                           const raw = diagnosisResult?.thoughtProcess || currentThoughtRecord?.thoughtProcess || 'You used whole-number rules.';
+                          // A hands-on serve is marked by plain rules, so Byte says exactly what happened rather than guessing.
+                          if (exactServe) {
+                            return (
+                              <p className="text-base font-semibold leading-snug" data-testid="serve-mistake">
+                                {raw}
+                              </p>
+                            );
+                          }
                           const guess = endSentence(shorten(raw, 18)).replace(/^You\b/, 'you');
                           const asking = currentThoughtRecord?.confirmed === 'unanswered' && !showRevisionInput;
                           return (
@@ -285,7 +300,7 @@ export const QuestionModal: React.FC = () => {
                           );
                         })()}
 
-                        {currentThoughtRecord?.confirmed === 'unanswered' && !showRevisionInput && (
+                        {!exactServe && currentThoughtRecord?.confirmed === 'unanswered' && !showRevisionInput && (
                           <div className="flex gap-2">
                             <button type="button" onClick={() => handleConfirmThought('yes')} data-testid="confirm-thought-yes" className="btn btn-leaf flex-1 py-2.5">
                               Yes
@@ -350,6 +365,7 @@ export const QuestionModal: React.FC = () => {
 
   // The question
   const concept = world?.concepts.find((c) => c.id === selectedTree.conceptId);
+  const bridge = selectedTree.serveConfig?.whole === 'bridge';
   const guessPct = currentPrediction ? Math.round(currentPrediction.pCorrect * 100) : null;
 
   return (
@@ -435,13 +451,15 @@ export const QuestionModal: React.FC = () => {
           {selectedTree.kind === 'serve' && selectedTree.serveConfig ? (
             <div className="space-y-3 rounded-2xl border-2 border-sun bg-sun-soft p-4">
               <div className="flex items-center justify-between">
-                <span className="font-black">Serve the cake</span>
+                <span className="font-black">{bridge ? 'Build the bridge' : 'Serve the cake'}</span>
                 <span className="rounded-full bg-paper px-2.5 py-0.5 text-sm font-bold border-2 border-paper-edge">
                   {servedSlices.size} of {selectedTree.serveConfig.totalSlices}
                 </span>
               </div>
               <p className="text-sm font-semibold text-ink-soft">
-                Tap slices to serve {selectedTree.serveConfig.targetNumerator}/{selectedTree.serveConfig.targetDenominator} of the cake.
+                {bridge
+                  ? `Tap planks to lay ${selectedTree.serveConfig.targetNumerator}/${selectedTree.serveConfig.targetDenominator} of the bridge. Tap the bridge above the tree, or here.`
+                  : `Tap slices to serve ${selectedTree.serveConfig.targetNumerator}/${selectedTree.serveConfig.targetDenominator} of the cake. Tap the cake above the tree, or here.`}
               </p>
               <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
                 {Array.from({ length: selectedTree.serveConfig.totalSlices }).map((_, i) => {
@@ -456,13 +474,13 @@ export const QuestionModal: React.FC = () => {
                       aria-pressed={served}
                       className={`btn py-2.5 text-sm ${served ? 'btn-berry' : 'btn-paper'}`}
                     >
-                      {served ? 'Served' : i + 1}
+                      {served ? (bridge ? 'Laid' : 'Served') : i + 1}
                     </button>
                   );
                 })}
               </div>
               <button type="button" data-testid="serve-submit-btn" disabled={hasSubmitted} onClick={handleServeSubmit} className="btn btn-leaf w-full py-2.5">
-                Serve {servedSlices.size} slice{servedSlices.size === 1 ? '' : 's'}
+                {bridge ? `Lay ${servedSlices.size} plank${servedSlices.size === 1 ? '' : 's'}` : `Serve ${servedSlices.size} slice${servedSlices.size === 1 ? '' : 's'}`}
               </button>
             </div>
           ) : (

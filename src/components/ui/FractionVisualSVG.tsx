@@ -11,7 +11,7 @@ interface FractionVisualSVGProps {
 /** One round cake. It scales down with its container, so pictures never spill off a narrow phone. */
 const CakeSVG: React.FC<{ parts: number; shaded: number; size: number; cherry?: number }> = ({ parts, shaded, size, cherry = 6.5 }) => (
   <svg viewBox="-100 -100 200 200" className="drop-shadow-sm select-none block" style={{ width: size, maxWidth: '100%', height: 'auto' }}>
-    <circle cx="0" cy="0" r="90" fill="#fef08a" stroke="#d97706" strokeWidth="4" />
+    <circle cx="0" cy="0" r="90" fill="#fffaf0" stroke="#2f2a22" strokeWidth="4" />
     {Array.from({ length: parts }).map((_, i) => {
       const startAngle = (2 * Math.PI * i) / parts - Math.PI / 2;
       const endAngle = (2 * Math.PI * (i + 1)) / parts - Math.PI / 2;
@@ -20,12 +20,12 @@ const CakeSVG: React.FC<{ parts: number; shaded: number; size: number; cherry?: 
       const d = `M 0 0 L ${Math.cos(startAngle) * 90} ${Math.sin(startAngle) * 90} A 90 90 0 0 1 ${Math.cos(endAngle) * 90} ${Math.sin(endAngle) * 90} Z`;
       return (
         <g key={i}>
-          <path d={d} fill={isShaded ? '#f472b6' : '#fef9c3'} stroke="#b45309" strokeWidth="2.5" className="transition-colors duration-200" />
-          {isShaded && <circle cx={Math.cos(midAngle) * 55} cy={Math.sin(midAngle) * 55} r={cherry} fill="#dc2626" stroke="#991b1b" strokeWidth="1.5" />}
+          <path d={d} fill={isShaded ? '#e46f92' : '#f3dca6'} stroke="#2f2a22" strokeWidth="2.5" className="transition-colors duration-200" />
+          {isShaded && <circle cx={Math.cos(midAngle) * 55} cy={Math.sin(midAngle) * 55} r={cherry} fill="#c2493d" stroke="#2f2a22" strokeWidth="1.5" />}
         </g>
       );
     })}
-    <circle cx="0" cy="0" r="7" fill="#d97706" />
+    <circle cx="0" cy="0" r="7" fill="#2f2a22" />
   </svg>
 );
 
@@ -81,7 +81,7 @@ export const FractionVisualSVG: React.FC<FractionVisualSVGProps> = ({ visual, cl
           className="drop-shadow-sm select-none block"
           style={{ width: barWidth + 10, maxWidth: '100%', height: 'auto' }}
         >
-          <rect x="0" y="0" width={barWidth} height={barHeight} rx="6" fill="#451a03" stroke="#291305" strokeWidth="3" />
+          <rect x="0" y="0" width={barWidth} height={barHeight} rx="6" fill="#e3d2ad" stroke="#2f2a22" strokeWidth="3" />
           {Array.from({ length: visual.parts }).map((_, i) => {
             const isShaded = i < visual.shaded;
             const x = i * pieceWidth;
@@ -93,12 +93,12 @@ export const FractionVisualSVG: React.FC<FractionVisualSVGProps> = ({ visual, cl
                   width={pieceWidth - 4}
                   height={barHeight - 4}
                   rx="4"
-                  fill={isShaded ? '#78350f' : '#fed7aa'}
-                  stroke={isShaded ? '#92400e' : '#fdba74'}
+                  fill={isShaded ? '#6b4a2b' : '#f3dca6'}
+                  stroke="#2f2a22"
                   strokeWidth="1.5"
                 />
                 {isShaded && (
-                  <rect x={x + (pieceWidth - 4) * 0.25 + 2} y={barHeight * 0.25} width={(pieceWidth - 4) * 0.5} height={barHeight * 0.5} rx="2" fill="#92400e" opacity="0.6" />
+                  <rect x={x + (pieceWidth - 4) * 0.25 + 2} y={barHeight * 0.25} width={(pieceWidth - 4) * 0.5} height={barHeight * 0.5} rx="2" fill="#553a22" opacity="0.6" />
                 )}
               </g>
             );
