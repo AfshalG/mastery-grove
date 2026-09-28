@@ -8,7 +8,7 @@ Built at the Berkeley x DeepMind hackathon on 27 September 2026 by Afshal Gulam,
 - 1-minute demo: https://youtu.be/QZ_cm19n5ks
 - 2-minute pitch: https://youtu.be/vF0fdhmE72o
 
-The hackathon build is tagged `v1.0-hackathon` on `main`. Version 2 is on `development`.
+The hackathon build is tagged `v1.0-hackathon`. Version 2 is on `main`, tagged `v2.0`. The AI Studio link above still runs the hackathon build.
 
 ## What version 2 adds
 
