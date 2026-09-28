@@ -3,7 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { liveAvatar } from '../../game/liveAvatar';
 import { damp, turnToward } from '../../game/motion';
-import { teachSpotPlace } from '../../game/layout';
+import { groundHeight, teachSpotPlace } from '../../game/layout';
 import { useGameStore } from '../../store/useGameStore';
 
 const ORANGE = '#e36f1e';
@@ -49,7 +49,7 @@ export const Fox: React.FC = () => {
     const speed = Math.hypot(vx, vz);
 
     heading.current = turnToward(heading.current, speed > 0.4 ? Math.atan2(vx, vz) : h, 1 - Math.exp(-8 * dt));
-    g.position.set(pos.current.x, 0, pos.current.z);
+    g.position.set(pos.current.x, layout ? groundHeight(layout, pos.current) : 0, pos.current.z);
     g.rotation.y = heading.current;
     if (body.current) body.current.position.y = speed > 0.4 ? Math.abs(Math.sin(state.clock.elapsedTime * 10)) * 0.12 : 0;
   });

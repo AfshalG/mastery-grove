@@ -170,7 +170,9 @@ interface Room {
 | Spacing | Fixing a missed tree only counts if at least one other question came between the miss and the fix. |
 | Due (Memory Quest) | When the teacher starts the next session, or the kid comes back on a new day: box 2 trees last seen at least 1 session ago, box 3 trees at least 3 sessions ago. Missed trees come back through their saplings instead. A due tree hides its choices until the kid has an answer in mind. |
 | Grove health | Share of a grove's worksheet trees answered right. Saplings and made-for-you trees don't count. |
-| Unlock | A grove opens when every prerequisite grove has health of at least 0.6. |
+| Unlock | A grove opens when every prerequisite grove has health of at least 0.6. Once open, it stays open: a memory check answered wrong wilts a tree but never locks a grove (or breaks a bridge) the kid has reached. |
+| Bridges | A stream runs between each pair of groves. Its bridge's planks are laid as the groves before it grow (each counts up to its 60%, and the least-grown sets the pace). It opens when the grove past it, or any later one, opens. Water blocks the kid everywhere else, and a click past an unfinished bridge walks only to its near end. |
+| Missions | For the first open grove that isn't done: grow 60% of its trees (builds the bridge), explain it to Mia, cross to the next grove, and (optional) grow the rest. Memory checks come first. Byte's beam points at the first mission still to do: a tree (Byte's pick when it's in this grove), Mia, or the way into the next grove. |
 | Saplings | At most 2 Made-for-you trees per missed tree per session. |
 | Calibration | One line after every answer compares confidence with the result. Very sure and wrong: "that's the moment to slow down and check". Not sure and right: "you knew more than you thought". |
 | Reflection feedback | Rating 3+ with accuracy below 70%: "You felt sure, but got X% right." Rating 2 or less with accuracy 70%+: "You know more than you think." |
@@ -188,7 +190,8 @@ Tree and sign overlaps were the most visible bug in the hackathon build, so layo
 4. Trees added during play take the first free spot on the grove's outer rings. Saplings and made-for-you trees go beside the tree they came from; memory trees go by the entrance.
 5. Positions are recomputed on every load. Saves never pin them.
 6. Flowers, mushrooms and rocks are scattered with a fixed seed. They stay off the trail, trees, signs and clearings.
-7. Mia sits at the heart of each grove. Base rings start at radius 6, so the answer stones for any tree (which rise between the kid and the centre) stay clear of her. The kid talks to her from in front and a little to her right, so the camera frames both.
+7. A stream crosses the whole forest halfway between each pair of clearings; groves are spaced so it always fits with meadow either side. Its bridge sits where the trail crosses it. No tree, flower or scenery tree stands in the water.
+8. Mia sits at the heart of each grove. Base rings start at radius 6, so the answer stones for any tree (which rise between the kid and the centre) stay clear of her. The kid talks to her from in front and a little to her right, so the camera frames both.
 
 The invariants (tested for 1–12 groves and 1–15 trees per grove, plus 24 extra trees in one grove):
 - every pair of trees at least 3 apart
@@ -199,6 +202,7 @@ The invariants (tested for 1–12 groves and 1–15 trees per grove, plus 24 ext
 - everything inside the walkable bounds
 - the same world always gives the same forest
 - no tree, answer stone or answering spot near Mia's teach spot
+- nothing in the water, and every bridge on the trail
 
 ## Gemini calls
 

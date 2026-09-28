@@ -5,6 +5,7 @@ import { sounds } from '../../utils/audio';
 import { approachPoint } from '../../game/layout';
 import { TreeData } from '../../types/game';
 import { miaStatus } from '../../game/teach';
+import { MissionPanel } from './MissionPanel';
 import { Apple, ByteFace, Lantern, Leaf, MiaFace, PadArrow, Sprout, TrailMap } from './icons';
 
 const isTouch = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches;
@@ -73,7 +74,13 @@ export const HUD: React.FC = () => {
     teachSpots,
     teachBacks,
     walkToMia,
+    selectedTree,
+    openTeachSpot,
+    showExplanationModal,
+    pendingReflection,
   } = useGameStore();
+  // A card is up (question, feedback, Mia or a reflection): on smaller screens the missions make room for it.
+  const cardOpen = selectedTree !== null || openTeachSpot !== null || showExplanationModal || pendingReflection !== null;
 
   // Start from the real setting, so the button can't drift out of sync after the HUD remounts.
   const [soundOn, setSoundOn] = useState(sounds.enabled);
@@ -169,8 +176,19 @@ export const HUD: React.FC = () => {
         </div>
       </header>
 
+      {/* The grove's missions: a card on the right on wider screens (always there on laptops, where cards dock left) */}
+      <div className={`fixed top-24 right-4 z-30 w-[18.5rem] pointer-events-none ${cardOpen ? 'hidden lg:block' : 'hidden sm:block'}`}>
+        <MissionPanel />
+      </div>
+
       {/* Notes stack under the title, so one never covers another */}
       <div className="fixed z-40 top-[4.5rem] sm:top-24 left-2.5 sm:left-4 right-2.5 sm:right-auto sm:w-[22rem] flex flex-col gap-2 pointer-events-none">
+        {/* Phones: the missions fold into one "Next:" line at the top */}
+        {!cardOpen && (
+          <div className="sm:hidden">
+            <MissionPanel compact />
+          </div>
+        )}
         {welcomeBackInfo && (
           <Note accent="var(--color-sun)">
             <ByteFace size={36} className="shrink-0" />

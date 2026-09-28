@@ -127,3 +127,15 @@ export const MiaFace: React.FC<IconProps & { mood?: 'puzzled' | 'happy' }> = ({ 
     )}
   </svg>
 );
+
+/** A little arched footbridge, for crossing to the next grove. */
+export const BridgeIcon: React.FC<IconProps> = ({ size = 18, className }) => (
+  <svg viewBox="0 0 24 24" width={size} height={size} className={className} aria-hidden="true">
+    <path d="M2 17 C 6 20, 18 20, 22 17" stroke="#5fb0c2" strokeWidth="2.2" fill="none" strokeLinecap="round" />
+    <path d="M3 14 C 8 9, 16 9, 21 14" stroke="#8a6440" strokeWidth="2.4" fill="none" strokeLinecap="round" />
+    <path d="M3 10 C 8 5, 16 5, 21 10" stroke={INK} strokeWidth="1.7" fill="none" strokeLinecap="round" />
+    {[6, 10, 14, 18].map((x) => (
+      <path key={x} d={`M${x} ${x === 6 || x === 18 ? 8.3 : 6.8} V ${x === 6 || x === 18 ? 12.4 : 10.9}`} stroke={INK} strokeWidth="1.5" strokeLinecap="round" />
+    ))}
+  </svg>
+);

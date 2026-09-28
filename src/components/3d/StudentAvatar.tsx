@@ -3,9 +3,14 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useGameStore } from '../../store/useGameStore';
 import { sounds } from '../../utils/audio';
-import { clampToBounds } from '../../game/layout';
+import { blockWater, clampToBounds, groundHeight } from '../../game/layout';
+import { openBridges } from '../../game/missions';
+import { damp } from '../../game/motion';
 import { liveAvatar } from '../../game/liveAvatar';
 import { turnToward } from '../../game/motion';
+
+/** A note about an unfinished bridge at most this often, however long the kid pushes against the water. */
+const BLOCKED_NOTE_EVERY = 4;
 
 const SPEED = 7.5;
 const ARRIVE_DISTANCE = 0.25;
@@ -50,6 +55,8 @@ export const StudentAvatar: React.FC = () => {
   const lastPublish = useRef(0);
   const wasMoving = useRef(false);
   const lastStep = useRef(0);
+  const lastBlockedNote = useRef(-Infinity);
+  const groundY = useRef(0);
   const hopStart = useRef(-1); // -1: not hopping. -2: start on the next frame.
 
   useEffect(() => {
@@ -114,10 +121,22 @@ export const StudentAvatar: React.FC = () => {
     const turnShare = 1 - Math.exp(-14 * dt);
     let moving = false;
 
+    // Water can only be crossed on a finished bridge.
+    const layout = store.layout;
+    const open = layout ? openBridges(layout, store.getUnlockedConcepts()) : [];
+    const stayDry = (next: { x: number; z: number }) => {
+      if (!layout) return next;
+      const { p, blockedBy } = blockWater(layout, open, { x: liveAvatar.x, z: liveAvatar.z }, clampToBounds(layout, next));
+      if (blockedBy !== null && !open[blockedBy] && state.clock.elapsedTime - lastBlockedNote.current > BLOCKED_NOTE_EVERY) {
+        lastBlockedNote.current = state.clock.elapsedTime;
+        store.setSaplingNotice(store.bridgeNotice(blockedBy));
+      }
+      return p;
+    };
+
     if (free && (dx !== 0 || dz !== 0)) {
       const len = Math.hypot(dx, dz);
-      let next = { x: liveAvatar.x + (dx / len) * SPEED * dt, z: liveAvatar.z + (dz / len) * SPEED * dt };
-      if (store.layout) next = clampToBounds(store.layout, next);
+      const next = stayDry({ x: liveAvatar.x + (dx / len) * SPEED * dt, z: liveAvatar.z + (dz / len) * SPEED * dt });
       liveAvatar.x = next.x;
       liveAvatar.z = next.z;
       heading.current = turnToward(heading.current, Math.atan2(dx, dz), turnShare);
@@ -130,8 +149,11 @@ export const StudentAvatar: React.FC = () => {
       const dist = Math.hypot(tx, tz);
       if (dist > ARRIVE_DISTANCE) {
         const step = Math.min(SPEED * dt, dist);
-        liveAvatar.x += (tx / dist) * step;
-        liveAvatar.z += (tz / dist) * step;
+        const next = stayDry({ x: liveAvatar.x + (tx / dist) * step, z: liveAvatar.z + (tz / dist) * step });
+        // A walk that the water stops (a bridge closed under it, say) ends where it is, rather than pushing forever.
+        if (Math.hypot(next.x - liveAvatar.x, next.z - liveAvatar.z) < step * 0.25) store.cancelWalk();
+        liveAvatar.x = next.x;
+        liveAvatar.z = next.z;
         heading.current = turnToward(heading.current, Math.atan2(tx, tz), turnShare);
         moving = true;
       } else {
@@ -157,7 +179,9 @@ export const StudentAvatar: React.FC = () => {
     }
     wasMoving.current = moving;
 
-    group.position.set(liveAvatar.x, 0, liveAvatar.z);
+    // Up and over a bridge's arch.
+    groundY.current = damp(groundY.current, layout ? groundHeight(layout, liveAvatar) : 0, 18, dt);
+    group.position.set(liveAvatar.x, groundY.current, liveAvatar.z);
     group.rotation.y = heading.current;
     liveAvatar.heading = heading.current;
     liveAvatar.moving = moving;
