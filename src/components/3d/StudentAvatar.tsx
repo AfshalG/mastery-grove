@@ -169,6 +169,10 @@ export const StudentAvatar: React.FC = () => {
       if (g) heading.current = turnToward(heading.current, Math.atan2(g.centre.x - liveAvatar.x, g.centre.z - liveAvatar.z), turnShare);
     }
 
+    // Set before publishing, so the last update when the kid stops says they've stopped (classmates see it too).
+    liveAvatar.heading = heading.current;
+    liveAvatar.moving = moving;
+
     // The store hears where we are a few times a second while walking, and once more when we stop.
     const now = state.clock.elapsedTime;
     if ((moving && now - lastPublish.current > PUBLISH_EVERY) || (!moving && wasMoving.current)) {

@@ -61,6 +61,13 @@ export const TeacherScreen: React.FC = () => {
     startNextSession,
     teachBacks: liveTeachBacks,
     reflections: liveReflections,
+    room,
+    roster,
+    roomPlayers,
+    roomError,
+    openClassRoom,
+    leaveClassRoom,
+    startClassSession,
   } = useGameStore();
   // A moment of "Session 2 started" on the button after the teacher starts the next session.
   const [sessionStarted, setSessionStarted] = useState(false);
@@ -247,6 +254,8 @@ export const TeacherScreen: React.FC = () => {
 
   // Combine live session student with simulated classmates
   const allStudents = useMemo<ClassmateData[]>(() => {
+    // With a class room open, the class is the students who joined (and sample classmates until there are three).
+    if (room?.role === 'teacher') return [...roster, ...(roster.length < 3 ? classmates : [])];
     const liveStudent: ClassmateData = {
       id: 'student-you',
       name: 'You (playing now)',
@@ -273,6 +282,8 @@ export const TeacherScreen: React.FC = () => {
     liveTeachBacks,
     liveReflections,
     classmates,
+    room,
+    roster,
   ]);
 
   const selectedStudent = useMemo(() => {
@@ -615,7 +626,7 @@ export const TeacherScreen: React.FC = () => {
             {/* Next session: trees due for a memory check come back as the Memory Quest */}
             <button
               onClick={() => {
-                startNextSession();
+                startClassSession();
                 setSessionStarted(true);
                 setTimeout(() => setSessionStarted(false), 2500);
               }}
@@ -651,6 +662,15 @@ export const TeacherScreen: React.FC = () => {
             </div>
           </div>
         </div>
+
+        <ClassRoomPanel
+          code={room?.role === 'teacher' ? room.code : null}
+          status={room?.status ?? null}
+          students={roomPlayers.filter((p) => p.role === 'student' && p.connected).length}
+          error={roomError}
+          onOpen={() => openClassRoom('Teacher')}
+          onClose={leaveClassRoom}
+        />
 
         {/* Global Toast if Quest Deployed or Sprout Planted */}
         {teacherToast && (
@@ -1615,6 +1635,70 @@ const OwnWords: React.FC<{ student: ClassmateData; world: WorldData | null }> = 
           ))}
         </div>
       )}
+    </div>
+  );
+};
+
+/**
+ * Play together: the teacher opens a room for this forest and reads out the code; students join on their own
+ * devices, walk the same forest, and show up on this page as they play.
+ */
+const ClassRoomPanel: React.FC<{
+  code: string | null;
+  status: 'connected' | 'reconnecting' | null;
+  students: number;
+  error: string | null;
+  onOpen: () => Promise<string | null>;
+  onClose: () => void;
+}> = ({ code, status, students, error, onOpen, onClose }) => {
+  const [opening, setOpening] = useState(false);
+  if (!code) {
+    return (
+      <div className="p-5 rounded-3xl bg-paper border border-paper-edge shadow-[0_3px_0_var(--color-paper-edge)] flex flex-col sm:flex-row sm:items-center gap-4">
+        <div className="flex-1 space-y-1">
+          <h2 className="text-base font-black flex items-center gap-2">
+            <Users className="w-5 h-5 text-leaf-deep" />
+            Play together
+          </h2>
+          <p className="text-sm text-ink-soft">
+            Open a class room for this forest. Students join on their own devices with a code, see each other in the forest, and show up here as they play.
+          </p>
+          {error && <p className="text-sm font-bold text-berry-deep">{error}</p>}
+        </div>
+        <button
+          type="button"
+          disabled={opening}
+          data-testid="open-room-btn"
+          onClick={async () => {
+            setOpening(true);
+            await onOpen();
+            setOpening(false);
+          }}
+          className="px-5 py-3 rounded-xl bg-leaf text-paper font-bold text-sm shadow-[0_3px_0_var(--color-leaf-deep)] hover:brightness-105 disabled:opacity-60"
+        >
+          {opening ? 'Opening…' : 'Open a class room'}
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div className="p-5 rounded-3xl bg-leaf-soft border border-leaf/40 flex flex-col sm:flex-row sm:items-center gap-4" data-testid="room-panel">
+      <div className="flex-1 space-y-1">
+        <p className="text-xs font-bold uppercase tracking-wider text-leaf-deep">Class code</p>
+        <p className="text-4xl font-black tracking-[0.25em]" data-testid="room-code">
+          {code}
+        </p>
+        <p className="text-sm text-ink-soft">
+          Students choose “Join your class” on the start screen and type this code.{' '}
+          <span className="font-bold text-ink" data-testid="room-students">
+            {students} student{students === 1 ? '' : 's'} here
+          </span>
+          {status === 'reconnecting' && <span className="font-bold text-sun-deep"> · reconnecting…</span>}
+        </p>
+      </div>
+      <button type="button" onClick={onClose} className="px-4 py-2.5 rounded-xl bg-paper border border-paper-edge text-sm font-bold hover:bg-paper-deep">
+        Close the room
+      </button>
     </div>
   );
 };
