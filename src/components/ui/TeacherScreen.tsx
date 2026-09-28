@@ -388,6 +388,8 @@ export const TeacherScreen: React.FC = () => {
     try {
       const res = await fetch('/api/generate-intervention', {
         method: 'POST',
+        // A stuck request gives up and shows the retry, instead of spinning.
+        signal: AbortSignal.timeout(75_000),
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           targetType,

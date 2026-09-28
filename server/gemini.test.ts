@@ -74,3 +74,33 @@ describe('createGeminiClient', () => {
     await expect(client.generateJson({ endpointName: 'generate-world', contents: 'p' })).rejects.toThrow(/empty/i);
   });
 });
+
+describe('createGeminiClient time limits', () => {
+  it('gives up on a model that doesn’t answer in time, cancels it, and asks the next one', async () => {
+    const signals: Array<AbortSignal | undefined> = [];
+    const models = ['stuck-model', 'quick-model'];
+    const generateContent = (args: { model: string; config?: { abortSignal?: AbortSignal } }) => {
+      signals.push(args.config?.abortSignal);
+      if (args.model === 'stuck-model') return new Promise<{ text: string }>(() => {}); // never answers
+      return Promise.resolve({ text: '{"ok":true}' });
+    };
+    const client = createGeminiClient({ generateContent, models, sleep: async () => {}, timeoutMs: () => 40 });
+
+    await expect(client.generateJson({ endpointName: 'generate-intervention', contents: 'p' })).resolves.toEqual({ ok: true });
+    expect(signals[0]?.aborted).toBe(true);
+    expect(signals[1]?.aborted).toBe(false);
+  });
+
+  it('fails with a clear error when every model runs out of time', async () => {
+    const generateContent = () => new Promise<{ text: string }>(() => {});
+    const client = createGeminiClient({ generateContent, models: ['a', 'b'], sleep: async () => {}, timeoutMs: () => 20 });
+
+    await expect(client.generateJson({ endpointName: 'generate-rundown', contents: 'p' })).rejects.toThrow(/didn’t answer in time/);
+  });
+
+  it('gives world building more time than the quick calls', async () => {
+    const { timeLimitFor } = await import('./gemini');
+    expect(timeLimitFor('generate-world')).toBeGreaterThan(timeLimitFor('diagnose-thought-process'));
+    expect(timeLimitFor('grade-teach-back')).toBeGreaterThanOrEqual(30_000);
+  });
+});

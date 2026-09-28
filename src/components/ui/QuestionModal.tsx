@@ -406,6 +406,13 @@ export const QuestionModal: React.FC = () => {
 
           <h3 className="text-xl font-extrabold leading-snug">{selectedTree.question}</h3>
 
+          {/* Where a question came from, when Gemini made it from the teacher's worksheet */}
+          {selectedTree.citation?.quote && (
+            <p className="text-sm font-semibold text-ink-soft" data-testid="citation">
+              From the worksheet{selectedTree.citation.page ? `, page ${selectedTree.citation.page}` : ''}: <span className="italic">“{selectedTree.citation.quote}”</span>
+            </p>
+          )}
+
           {guessPct !== null && (
             <div className="space-y-1.5">
               <button
