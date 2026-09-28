@@ -52,10 +52,11 @@ WORLD SPECIFICATION:
      * choices: []
      * answerIndex: 4
    - In the grove about comparing (or any grove), the hands-on tree may be a bridge instead of a cake: set serveConfig.whole to "bridge", use a "bar" visual, and ask it as laying planks (e.g. "Lay 3/4 of the planks on the bridge." with 8 planks).
-5. Citations:
+5. Reading and English topics (reading comprehension, stories, vocabulary): give every tree a short original passage to read first, as "passage": { "title": "...", "text": "..." } of 30 to 90 words, and ask about it (the main idea, what the clues suggest, what a word means in its sentence, what happens first). No visuals and no serve trees. Each wrong choice must still match one of the concept's misconceptions (e.g. "picks a detail instead of the main idea", "only trusts what the text says word for word").
+6. Citations:
    - If worksheet text or an uploaded worksheet file is provided, every question MUST be derived from or directly present in that worksheet, and "citation" must include { "page": <page number (1-indexed)>, "quote": "<exact line or phrase from worksheet>" }.
    - If only a topic was provided without worksheet text or file, set "citation" to null.
-6. Teach spots: exactly one per concept. Mia, a classmate, sits in that concept's grove, stuck on ONE of its misconceptions, and the student explains it to her.
+7. Teach spots: exactly one per concept. Mia, a classmate, sits in that concept's grove, stuck on ONE of its misconceptions, and the student explains it to her.
    - "conceptId": the concept. "misconceptionId": the misconception Mia has, from your list for that concept.
    - "puzzledThought": what Mia says, at most 25 words, in a 10-year-old's voice: her wrong working and her question (e.g. "To simplify 4/8, I halved the top and got 2/8. My teacher marked it wrong. Why?").
    - "board": her wrong working in at most 18 characters, for the slate she holds up (e.g. "4/8 = 2/8 ?").
@@ -174,6 +175,14 @@ WORLD SPECIFICATION:
                         targetDenominator: { type: Type.INTEGER },
                         totalSlices: { type: Type.INTEGER },
                         whole: { type: Type.STRING, description: "'cake' (default) or 'bridge'" },
+                      },
+                    },
+                    passage: {
+                      type: Type.OBJECT,
+                      description: 'Reading topics only: a short original passage to read before the question',
+                      properties: {
+                        title: { type: Type.STRING },
+                        text: { type: Type.STRING, description: '30 to 90 words' },
                       },
                     },
                     citation: {

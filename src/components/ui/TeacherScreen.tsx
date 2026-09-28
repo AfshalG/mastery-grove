@@ -43,6 +43,7 @@ import {
 } from '../../types/game';
 import { judgmentFeedback, judgmentGap } from '../../game/memory';
 import { validTeachSpots } from '../../game/teach';
+import { isReadingSubject } from '../../game/skins';
 import { Leaf, MiaFace } from './icons';
 
 export const TeacherScreen: React.FC = () => {
@@ -171,10 +172,12 @@ export const TeacherScreen: React.FC = () => {
       correctAnswer: tree.choices[tree.answerIndex],
     });
 
-    const alex = wrong('Alex Chen', m[1], 'You divided only the top number and left the bottom number the same.', 'Alex often skips the bottom number.', 18);
-    const marcus = wrong('Marcus Rodriguez', m[2], 'You compared the top numbers and picked the bigger one.', 'Marcus looks only at the top numbers.', 16);
-    const zoe = wrong('Zoe Kim', m[4], 'You added the top numbers and the bottom numbers separately.', 'Zoe adds fractions like whole numbers.', 22, {
-      studentWords: 'I thought fractions add straight across.',
+    // What the sample classmates said and thought, in the language of this world's subject.
+    const t = isReadingSubject(world.subject) ? SAMPLE_LINES.reading : SAMPLE_LINES.maths;
+    const alex = wrong('Alex Chen', m[1], t.alex[0], t.alex[1], 18);
+    const marcus = wrong('Marcus Rodriguez', m[2], t.marcus[0], t.marcus[1], 16);
+    const zoe = wrong('Zoe Kim', m[4], t.zoe[0], t.zoe[1], 22, {
+      studentWords: t.zoeWords,
       confirmed: 'no',
     });
 
@@ -208,10 +211,10 @@ export const TeacherScreen: React.FC = () => {
         activeMisconceptionId: m[1]?.id ?? null,
         overcomeMisconceptions: m[0] ? [m[0].id] : [],
         predictionStats: { exact: 3, direction: 2, miss: 1 },
-        attempts: [alex.attempt, right(treeFor(m[0], 1), 0.65, 'Alex got simplest form with the picture.', 14)],
+        attempts: [alex.attempt, right(treeFor(m[0], 1), 0.65, t.alexRight, 14)],
         flags: [alex.flag],
-        teachBacks: taught(false, 'You just have to make the number smaller.', [], 9),
-        reflections: rated(2, 0.5, 'The bottom number confuses me.', 8),
+        teachBacks: taught(false, t.alexTaught, [], 9),
+        reflections: rated(2, 0.5, t.alexNote, 8),
       },
       {
         id: 'student-sophia',
@@ -221,10 +224,10 @@ export const TeacherScreen: React.FC = () => {
         activeMisconceptionId: null,
         overcomeMisconceptions: [m[0]?.id, m[1]?.id].filter((id): id is string => !!id),
         predictionStats: { exact: 5, direction: 1, miss: 0 },
-        attempts: [right(treeFor(m[0]), 0.88, 'Sophia has strong number sense.', 25), right(treeFor(m[2]), 0.82, 'Sophia finds common denominators.', 12)],
+        attempts: [right(treeFor(m[0]), 0.88, t.sophiaRight[0], 25), right(treeFor(m[2]), 0.82, t.sophiaRight[1], 12)],
         flags: [],
         teachBacks: spot ? taught(true, `${spot.rubricPoints[0]}. ${spot.rubricPoints[spot.rubricPoints.length - 1]}.`, [0, spot.rubricPoints.length - 1], 11) : [],
-        reflections: rated(4, 1, 'Whatever you do to the top, do to the bottom.', 10),
+        reflections: rated(4, 1, t.sophiaNote, 10),
       },
       {
         id: 'student-marcus',
@@ -236,7 +239,7 @@ export const TeacherScreen: React.FC = () => {
         predictionStats: { exact: 2, direction: 3, miss: 1 },
         attempts: [marcus.attempt],
         flags: [marcus.flag],
-        reflections: rated(3, 0.4, 'Easy, bigger numbers mean bigger fractions.', 6),
+        reflections: rated(3, 0.4, t.marcusNote, 6),
       },
       {
         id: 'student-zoe',
@@ -496,8 +499,9 @@ export const TeacherScreen: React.FC = () => {
       affectedStudents: item.affectedStudents.length > 0 ? item.affectedStudents : ['Class general observation'],
       typicalReasoning: item.quotes[0] || `Student assumption regarding ${item.label}`,
       whyReteach: `Addresses foundational misconception affecting ${Math.max(1, item.affectedCount)} student(s) before advancing to complex problems.`,
-      fiveMinuteActivity:
-        item.label.toLowerCase().includes('numerator') || item.label.toLowerCase().includes('denominator')
+      fiveMinuteActivity: isReadingSubject(world.subject)
+        ? 'Give pairs a short paragraph. They underline the clues, then say what the whole paragraph is about in five words.'
+        : item.label.toLowerCase().includes('numerator') || item.label.toLowerCase().includes('denominator')
           ? 'Draw two identical cake circles on paper: divide one into 4 slices and one into 8 slices. Shade 3/4 vs 5/8 to physically verify piece sizes.'
           : item.label.toLowerCase().includes('add')
           ? 'Use colored fractional paper strips (halves and thirds) laid side by side against a whole strip to demonstrate why denominators must match before adding.'
@@ -506,7 +510,9 @@ export const TeacherScreen: React.FC = () => {
 
     const priorityOrderSummary = topMisconceptions.length > 0
       ? `Priority 1 is "${topMisconceptions[0].label}" (affects ${topMisconceptions[0].affectedStudents.join(', ')}). Reteach using concrete physical models before advancing.`
-      : 'Review core foundational concepts with visual fraction models.';
+      : isReadingSubject(world.subject)
+        ? 'Review the grove’s ideas with a short shared reading.'
+        : 'Review core foundational concepts with visual fraction models.';
 
     let markdown = `# Mastery Grove: what to reteach\n*(Quick summary: Gemini was unavailable)*\n\n`;
     markdown += `**Subject:** ${world.subject}\n\n`;
@@ -1702,3 +1708,31 @@ const ClassRoomPanel: React.FC<{
     </div>
   );
 };
+
+/** Sample classmates' words, so a reading forest's samples talk about reading, not fractions. */
+const SAMPLE_LINES = {
+  maths: {
+    alex: ['You divided only the top number and left the bottom number the same.', 'Alex often skips the bottom number.'],
+    marcus: ['You compared the top numbers and picked the bigger one.', 'Marcus looks only at the top numbers.'],
+    zoe: ['You added the top numbers and the bottom numbers separately.', 'Zoe adds fractions like whole numbers.'],
+    zoeWords: 'I thought fractions add straight across.',
+    alexRight: 'Alex got simplest form with the picture.',
+    alexTaught: 'You just have to make the number smaller.',
+    alexNote: 'The bottom number confuses me.',
+    sophiaRight: ['Sophia has strong number sense.', 'Sophia finds common denominators.'],
+    sophiaNote: 'Whatever you do to the top, do to the bottom.',
+    marcusNote: 'Easy, bigger numbers mean bigger fractions.',
+  },
+  reading: {
+    alex: ['You picked the first sentence, but here it’s a hook, not the main idea.', 'Alex often goes with the first line.'],
+    marcus: ['You wanted the passage to say it out loud, so you missed the clues.', 'Marcus only trusts words that are written down.'],
+    zoe: ['You used the usual meaning of the word, not the one in this sentence.', 'Zoe uses the first meaning she knows.'],
+    zoeWords: 'I thought beat always means hit.',
+    alexRight: 'Alex found the main idea by reading every sentence.',
+    alexTaught: 'The main idea is just the first sentence.',
+    alexNote: 'Finding the main idea is still hard.',
+    sophiaRight: ['Sophia checks what most sentences are about.', 'Sophia backs up her guesses with clues.'],
+    sophiaNote: 'I look for what most of the sentences talk about.',
+    marcusNote: 'Easy, the answer is always written in the text.',
+  },
+} as const;

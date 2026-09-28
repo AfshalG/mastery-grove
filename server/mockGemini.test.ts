@@ -26,6 +26,28 @@ describe('mock Gemini', () => {
     }
   });
 
+  it('grows the autumn reading forest for a reading topic, every tree with a passage', async () => {
+    const world = await ask('generate-world', { topic: 'Primary 4 English: Reading' });
+
+    expect(world.subject).toBe('Primary 4 English: Reading');
+    expect(world.concepts.map((c: any) => c.id)).toEqual(['r1', 'r2', 'r3']);
+    for (const t of world.trees) {
+      expect(t.passage.text.length).toBeGreaterThan(40);
+      expect(t.choices).toHaveLength(4);
+      expect(t.visual).toBeUndefined();
+    }
+  });
+
+  it('names the reading mix-up a wrong reading answer shows', async () => {
+    const d = await ask('diagnose-thought-process', {
+      question: 'What does “beat” mean in this sentence?',
+      studentChoice: 'Hit again and again',
+      misconceptions: [],
+    });
+    expect(d).toMatchObject({ misconceptionId: 'rm5' });
+    expect(d.thoughtProcess).toMatch(/usual meaning/);
+  });
+
   it('predicts every open tree, the same way every time', async () => {
     const openTrees = SAMPLE_WORLD.trees.slice(0, 5);
     const input = { misconceptions: SAMPLE_WORLD.misconceptions, openTrees, recentAttempts: [], memory: [] };

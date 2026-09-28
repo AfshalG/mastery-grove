@@ -87,11 +87,13 @@ export const AUTUMN: Skin = {
   woodDark: '#7a5230',
 };
 
+/** Reading and language subjects, which get the autumn wood (and reading questions with passages). */
+export const isReadingSubject = (subject: string | undefined) =>
+  /english|reading|literacy|story|stories|poem|poetry|grammar|spelling|vocabulary|comprehension|writing/i.test(subject ?? '');
+
 /** Reading and language worlds get the autumn wood; everything else gets the spring meadow. */
 export function skinFor(subject: string | undefined): Skin {
-  return /english|reading|literacy|story|stories|poem|poetry|grammar|spelling|vocabulary|comprehension|writing/i.test(subject ?? '')
-    ? AUTUMN
-    : MEADOW;
+  return isReadingSubject(subject) ? AUTUMN : MEADOW;
 }
 
 /** A stable small number from an id, so each tree keeps its own shade and size on every screen. */

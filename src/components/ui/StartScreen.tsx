@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { AlertCircle, ArrowRight, Camera, FileText, PenLine, Users } from 'lucide-react';
 import { useGameStore } from '../../store/useGameStore';
 import { WorldData } from '../../types/game';
+import { SAMPLE_READING_WORLD } from '../../data/readingWorld';
 import { Sprout } from './icons';
 
 type Source = 'topic' | 'text' | 'file';
@@ -218,10 +219,23 @@ export const StartScreen: React.FC = () => {
           <p className="text-base sm:text-lg font-semibold text-ink-soft">Every question is a tree. Answer them and the forest grows.</p>
         </div>
 
-        <button onClick={playSample} data-testid="play-sample-btn" className="btn btn-sun w-full sm:w-auto px-7 py-3.5 text-lg">
-          Walk the fractions forest
-          <ArrowRight className="w-5 h-5" />
-        </button>
+        <div className="w-full flex flex-col items-center gap-2">
+          <button onClick={playSample} data-testid="play-sample-btn" className="btn btn-sun w-full sm:w-auto px-7 py-3.5 text-lg">
+            Walk the fractions forest
+            <ArrowRight className="w-5 h-5" />
+          </button>
+          <button
+            onClick={() => {
+              growRequest.current++;
+              setIsGrowing(false);
+              loadWorld(SAMPLE_READING_WORLD);
+            }}
+            data-testid="play-reading-btn"
+            className="text-sm font-bold text-ink-soft underline decoration-2 underline-offset-4 hover:text-ink"
+          >
+            or the autumn reading forest
+          </button>
+        </div>
 
         <JoinClass onJoining={() => growRequest.current++} />
 

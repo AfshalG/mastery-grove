@@ -400,3 +400,59 @@ export const ServeChallenge3D: React.FC<{ config: ServeConfig; position: [number
     </group>
   );
 };
+
+// ---- Reading: an open storybook over the tree while its passage question is open ---------------------------------
+
+const PAGE = '#fffaf0';
+const PAGE_EDGE = '#e3d2ad';
+const COVER = '#3f7d4e';
+const RIBBON = '#c2493d';
+
+/** An open book, gently bobbing, with lines of "text" on both pages and the passage's title underneath. */
+export const Book3D: React.FC<{ title: string; position: [number, number, number] }> = ({ title, position }) => {
+  const bob = useRef<THREE.Group>(null);
+  useFrame((state) => {
+    if (!bob.current) return;
+    const t = state.clock.elapsedTime;
+    bob.current.position.y = Math.sin(t * 1.4) * 0.06;
+    bob.current.rotation.y = Math.sin(t * 0.5) * 0.12;
+  });
+  const lines = [0.42, 0.24, 0.06, -0.12, -0.3];
+
+  return (
+    <group position={[position[0], position[1] + FLOAT_HEIGHT, position[2]]}>
+      <Halo />
+      <group ref={bob} rotation={[0.55, 0, 0]}>
+        {/* Cover, then a page block on each side of the spine */}
+        <mesh position={[0, -0.07, 0]} castShadow>
+          <boxGeometry args={[2.3, 0.06, 1.5]} />
+          <meshLambertMaterial color={COVER} />
+        </mesh>
+        {[-1, 1].map((side) => (
+          <group key={side} position={[side * 0.56, 0.02, 0]} rotation={[0, 0, side * -0.12]}>
+            <mesh castShadow>
+              <boxGeometry args={[1.06, 0.1, 1.36]} />
+              <meshLambertMaterial color={PAGE} />
+            </mesh>
+            <mesh position={[0, -0.001, 0]}>
+              <boxGeometry args={[1.07, 0.06, 1.37]} />
+              <meshLambertMaterial color={PAGE_EDGE} />
+            </mesh>
+            {lines.map((z, i) => (
+              <mesh key={z} position={[side * 0.02 - (i === lines.length - 1 ? 0.15 : 0), 0.052, z]}>
+                <boxGeometry args={[i === lines.length - 1 ? 0.5 : 0.8, 0.005, 0.06]} />
+                <meshBasicMaterial color={INK} transparent opacity={0.55} />
+              </mesh>
+            ))}
+          </group>
+        ))}
+        {/* A ribbon bookmark down the spine */}
+        <mesh position={[0.02, 0.07, 0.55]} rotation={[-0.3, 0, 0]}>
+          <boxGeometry args={[0.08, 0.01, 0.5]} />
+          <meshLambertMaterial color={RIBBON} />
+        </mesh>
+      </group>
+      {title && <Label text={title} position={[0, -0.75, 1.1]} />}
+    </group>
+  );
+};

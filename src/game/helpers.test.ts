@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { damp, turnToward } from './motion';
 import { endSentence, shorten } from './text';
-import { answerComparison, hideServeAnswer, sanitizeVisual } from './visuals';
+import { answerComparison, hideServeAnswer, sanitizePassage, sanitizeVisual } from './visuals';
 
 describe('shorten', () => {
   it('leaves a short question alone, question mark and all', () => {
@@ -127,5 +127,20 @@ describe('answerComparison', () => {
     expect(answerComparison('Simplify 4/8.', 'It becomes a smaller quantity than 4/8')).toBeNull();
     expect(answerComparison('Why does 4/8 equal 1/2?', 'Because it is smaller')).toBeNull();
     expect(answerComparison('Simplify 30/100.', '3/10')).toBeNull();
+  });
+});
+
+describe('sanitizePassage', () => {
+  it('keeps a passage with text, trimmed and capped for a card', () => {
+    expect(sanitizePassage({ title: '  Busy builders ', text: ' Beavers build dams. ' })).toEqual({ title: 'Busy builders', text: 'Beavers build dams.' });
+    expect(sanitizePassage({ text: 'x'.repeat(5000) })?.text).toHaveLength(1200);
+    expect(sanitizePassage({ text: 'No title' })).toEqual({ title: '', text: 'No title' });
+  });
+
+  it('drops anything that is not a passage', () => {
+    expect(sanitizePassage(undefined)).toBeUndefined();
+    expect(sanitizePassage({ title: 'Only a title' })).toBeUndefined();
+    expect(sanitizePassage({ text: '   ' })).toBeUndefined();
+    expect(sanitizePassage('a string')).toBeUndefined();
   });
 });

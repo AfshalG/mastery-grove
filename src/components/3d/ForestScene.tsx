@@ -9,7 +9,7 @@ import { ThirdPersonCamera } from './ThirdPersonCamera';
 import { TreeMesh } from './TreeMesh';
 import { GroveSign } from './GroveSign';
 import { AnswerStones } from './AnswerStones';
-import { ServeChallenge3D, VisualFraction3D } from './VisualFraction3D';
+import { Book3D, ServeChallenge3D, VisualFraction3D } from './VisualFraction3D';
 import { hideServeAnswer } from '../../game/visuals';
 import { skinFor } from '../../game/skins';
 import { Sky } from './Sky';
@@ -82,7 +82,7 @@ export const ForestScene: React.FC = () => {
   const skin = skinFor(world.subject);
 
   return (
-    <div className="w-full h-full relative select-none">
+    <div className="w-full h-full relative select-none" data-skin={skin.name}>
       <Canvas
         flat // no tone mapping: the storybook palette shows exactly as designed
         shadows="percentage"
@@ -152,6 +152,8 @@ export const ForestScene: React.FC = () => {
           {/* Over the open tree: the hands-on cake or bridge for a serve challenge, or the question's picture */}
           {selectedTree?.position && selectedTree.kind === 'serve' && selectedTree.serveConfig ? (
             <ServeChallenge3D config={selectedTree.serveConfig} position={selectedTree.position} />
+          ) : selectedTree?.position && selectedTree.passage && !selectedTree.visual ? (
+            <Book3D title={selectedTree.passage.title} position={selectedTree.position} />
           ) : (
             selectedTree?.visual &&
             selectedTree.position && <VisualFraction3D visual={hideServeAnswer(selectedTree.visual, selectedTree.kind)!} position={selectedTree.position} />

@@ -12,6 +12,11 @@ export type FractionVisual =
   | { kind: 'two-cakes'; left: { parts: number; shaded: number }; right: { parts: number; shaded: number } }
   | { kind: 'bar'; parts: number; shaded: number };
 
+export interface Passage {
+  title: string;
+  text: string;
+}
+
 export interface ServeConfig {
   targetNumerator: number;
   targetDenominator: number;
@@ -31,6 +36,8 @@ export interface TreeData {
   state: TreeState;
   kind?: 'mcq' | 'serve';        // default 'mcq'
   visual?: FractionVisual;
+  /** A short passage to read first, for reading questions. */
+  passage?: Passage;
   serveConfig?: ServeConfig;
   isSapling?: boolean;
   sourceTreeId?: string;
