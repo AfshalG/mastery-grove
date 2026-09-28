@@ -38,7 +38,12 @@ import {
   RundownReport,
   InterventionData,
   MisconceptionData,
+  Reflection,
+  TeachBackRecord,
 } from '../../types/game';
+import { judgmentFeedback, judgmentGap } from '../../game/memory';
+import { validTeachSpots } from '../../game/teach';
+import { Leaf, MiaFace } from './icons';
 
 export const TeacherScreen: React.FC = () => {
   const {
@@ -54,6 +59,8 @@ export const TeacherScreen: React.FC = () => {
     teacherToast,
     session,
     startNextSession,
+    teachBacks: liveTeachBacks,
+    reflections: liveReflections,
   } = useGameStore();
   // A moment of "Session 2 started" on the button after the teacher starts the next session.
   const [sessionStarted, setSessionStarted] = useState(false);
@@ -164,6 +171,27 @@ export const TeacherScreen: React.FC = () => {
       confirmed: 'no',
     });
 
+    // What sample classmates said to Mia and how they rated themselves, from this world's own teach spots.
+    const [spot] = validTeachSpots(world);
+    const firstGrove = world.concepts[0]?.id ?? '';
+    const taught = (passed: boolean, words: string, hitIdx: number[], minutes: number): TeachBackRecord[] =>
+      spot
+        ? [
+            {
+              conceptId: spot.conceptId,
+              passed,
+              hit: spot.rubricPoints.filter((_, i) => hitIdx.includes(i)),
+              missing: spot.rubricPoints.filter((_, i) => !hitIdx.includes(i)),
+              words,
+              spoken: false,
+              session,
+              at: ago(minutes),
+            },
+          ]
+        : [];
+    const rated = (rating: Reflection['rating'], accuracy: number, note: string, minutes: number): Reflection[] =>
+      firstGrove ? [{ conceptId: firstGrove, rating, accuracy, note, feedback: judgmentFeedback(rating, accuracy), session, at: ago(minutes) }] : [];
+
     return [
       {
         id: 'student-alex',
@@ -175,6 +203,8 @@ export const TeacherScreen: React.FC = () => {
         predictionStats: { exact: 3, direction: 2, miss: 1 },
         attempts: [alex.attempt, right(treeFor(m[0], 1), 0.65, 'Alex got simplest form with the picture.', 14)],
         flags: [alex.flag],
+        teachBacks: taught(false, 'You just have to make the number smaller.', [], 9),
+        reflections: rated(2, 0.5, 'The bottom number confuses me.', 8),
       },
       {
         id: 'student-sophia',
@@ -186,6 +216,8 @@ export const TeacherScreen: React.FC = () => {
         predictionStats: { exact: 5, direction: 1, miss: 0 },
         attempts: [right(treeFor(m[0]), 0.88, 'Sophia has strong number sense.', 25), right(treeFor(m[2]), 0.82, 'Sophia finds common denominators.', 12)],
         flags: [],
+        teachBacks: spot ? taught(true, `${spot.rubricPoints[0]}. ${spot.rubricPoints[spot.rubricPoints.length - 1]}.`, [0, spot.rubricPoints.length - 1], 11) : [],
+        reflections: rated(4, 1, 'Whatever you do to the top, do to the bottom.', 10),
       },
       {
         id: 'student-marcus',
@@ -197,6 +229,7 @@ export const TeacherScreen: React.FC = () => {
         predictionStats: { exact: 2, direction: 3, miss: 1 },
         attempts: [marcus.attempt],
         flags: [marcus.flag],
+        reflections: rated(3, 0.4, 'Easy, bigger numbers mean bigger fractions.', 6),
       },
       {
         id: 'student-zoe',
@@ -210,7 +243,7 @@ export const TeacherScreen: React.FC = () => {
         flags: [zoe.flag],
       },
     ];
-  }, [world]);
+  }, [world, session]);
 
   // Combine live session student with simulated classmates
   const allStudents = useMemo<ClassmateData[]>(() => {
@@ -225,10 +258,22 @@ export const TeacherScreen: React.FC = () => {
       predictionStats: livePredictionStats,
       attempts: liveAttempts,
       flags: liveThoughtRecords,
+      teachBacks: liveTeachBacks,
+      reflections: liveReflections,
     };
 
     return [liveStudent, ...classmates];
-  }, [liveStrengths, liveActiveMisconceptionId, liveOvercomeMisconceptions, livePredictionStats, liveAttempts, liveThoughtRecords, classmates]);
+  }, [
+    liveStrengths,
+    liveActiveMisconceptionId,
+    liveOvercomeMisconceptions,
+    livePredictionStats,
+    liveAttempts,
+    liveThoughtRecords,
+    liveTeachBacks,
+    liveReflections,
+    classmates,
+  ]);
 
   const selectedStudent = useMemo(() => {
     return allStudents.find((s) => s.id === selectedStudentId) || allStudents[0];
@@ -961,6 +1006,8 @@ export const TeacherScreen: React.FC = () => {
                 </div>
               </div>
 
+              <OwnWords student={selectedStudent} world={world} />
+
               {/* "Predicted vs Actual" Log */}
               <div className="space-y-3 pt-2">
                 <div className="flex items-center justify-between">
@@ -1492,6 +1539,80 @@ export const TeacherScreen: React.FC = () => {
               </div>
             ) : null}
           </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const RATING_LABEL: Record<Reflection['rating'], string> = { 1: 'Still confused', 2: 'Getting there', 3: 'I get it', 4: 'I could teach it' };
+
+/**
+ * What a student said in their own words: explaining a mix-up to Mia, and rating how well they know a grove.
+ * A rating that disagrees with their results is the line to look at first.
+ */
+const OwnWords: React.FC<{ student: ClassmateData; world: WorldData | null }> = ({ student, world }) => {
+  const teachBacks = (student.teachBacks ?? []).slice(0, 6);
+  const reflections = (student.reflections ?? []).slice(0, 6);
+  const grove = (id: string) => world?.concepts.find((c) => c.id === id)?.questName ?? 'a grove';
+
+  return (
+    <div className="space-y-3 pt-2" data-testid="own-words">
+      <h3 className="text-xs font-bold uppercase tracking-wider text-ink-soft flex items-center gap-1.5">
+        <MessageSquare className="w-4 h-4 text-leaf-deep" />
+        In their own words
+      </h3>
+      {teachBacks.length === 0 && reflections.length === 0 ? (
+        <div className="py-6 text-center text-xs text-ink-soft border border-dashed border-paper-edge rounded-2xl">
+          Nothing yet. Students explain mix-ups to Mia, and rate each grove when they finish it.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {teachBacks.map((r) => (
+            <div key={`t-${r.at}`} className="p-4 rounded-2xl bg-paper-deep border border-paper-edge text-xs space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="flex items-center gap-2 font-bold text-sm text-ink">
+                  <MiaFace size={24} mood={r.passed ? 'happy' : 'puzzled'} />
+                  Explained to Mia
+                </span>
+                <span
+                  className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                    r.passed ? 'bg-leaf-soft text-leaf-deep border border-leaf/40' : 'bg-sun-soft text-sun-deep border border-sun/50'
+                  }`}
+                >
+                  {r.passed ? 'Mia got it' : 'Still stuck'}
+                </span>
+              </div>
+              <p className="text-ink-soft">{grove(r.conceptId)}</p>
+              <p className="text-sm text-ink">
+                “{r.words || '(no words)'}”{r.spoken && <span className="text-ink-soft"> (said out loud)</span>}
+              </p>
+              {r.missing.length > 0 && <p className="text-ink-soft">Didn’t cover: {r.missing.join(' · ')}</p>}
+            </div>
+          ))}
+          {reflections.map((r) => (
+            <div key={`r-${r.at}`} className="p-4 rounded-2xl bg-paper-deep border border-paper-edge text-xs space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="flex items-center gap-2 font-bold text-sm text-ink">
+                  <span className="flex">
+                    {[1, 2, 3, 4].map((i) => (
+                      <Leaf key={i} size={13} hollow={i > r.rating} />
+                    ))}
+                  </span>
+                  {RATING_LABEL[r.rating]}
+                </span>
+                <span className="text-[11px] font-bold text-ink-soft">{Math.round(r.accuracy * 100)}% right</span>
+              </div>
+              <p className="text-ink-soft">Rated {grove(r.conceptId)}</p>
+              {r.note && <p className="text-sm text-ink">“{r.note}”</p>}
+              {judgmentGap(r.rating, r.accuracy) === 'overconfident' && (
+                <p className="font-bold text-berry-deep">Feels sure, but got {Math.round(r.accuracy * 100)}% right. Worth a quick check-in.</p>
+              )}
+              {judgmentGap(r.rating, r.accuracy) === 'underconfident' && (
+                <p className="font-bold text-leaf-deep">Doubts themselves, but got {Math.round(r.accuracy * 100)}% right.</p>
+              )}
+            </div>
+          ))}
         </div>
       )}
     </div>

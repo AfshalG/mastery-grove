@@ -104,3 +104,26 @@ export const FoxFace: React.FC<IconProps> = ({ size = 28, className }) => (
     <circle cx="24" cy="39" r="2.6" fill={INK} />
   </svg>
 );
+
+/** Mia, the classmate at the heart of each grove: two hair puffs with berry ribbons. Puzzled until she gets it. */
+export const MiaFace: React.FC<IconProps & { mood?: 'puzzled' | 'happy' }> = ({ size = 32, className, mood = 'puzzled' }) => (
+  <svg viewBox="0 0 48 48" width={size} height={size} className={className} aria-hidden="true">
+    <circle cx="11.5" cy="12" r="7" fill="#3b2a20" stroke={INK} strokeWidth="2" />
+    <circle cx="36.5" cy="12" r="7" fill="#3b2a20" stroke={INK} strokeWidth="2" />
+    <path d="M14.5 16.5 L 17.5 19 M 33.5 16.5 L 30.5 19" stroke="#c2493d" strokeWidth="3" strokeLinecap="round" />
+    <circle cx="24" cy="27" r="15" fill="#b9784f" stroke={INK} strokeWidth="2.2" />
+    <path d="M9.2 25 C 10 14, 38 14, 38.8 25 C 33 20.5, 27 19.5, 24 22.5 C 21 19.5, 15 20.5, 9.2 25 Z" fill="#3b2a20" />
+    <circle cx="18.5" cy="29" r="2.2" fill={INK} />
+    <circle cx="29.5" cy="29" r="2.2" fill={INK} />
+    <ellipse cx="14.2" cy="33.6" rx="2.6" ry="1.6" fill="#e58f7e" opacity="0.85" />
+    <ellipse cx="33.8" cy="33.6" rx="2.6" ry="1.6" fill="#e58f7e" opacity="0.85" />
+    {mood === 'happy' ? (
+      <path d="M19.5 35 Q 24 39.5 28.5 35" stroke={INK} strokeWidth="2.2" fill="none" strokeLinecap="round" />
+    ) : (
+      <>
+        <path d="M27 24.6 Q 30 22.4 32.6 24" stroke={INK} strokeWidth="1.8" fill="none" strokeLinecap="round" />
+        <circle cx="25.5" cy="36.2" r="1.8" fill={INK} />
+      </>
+    )}
+  </svg>
+);

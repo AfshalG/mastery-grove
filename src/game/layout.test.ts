@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SAMPLE_WORLD } from '../data/sampleWorld';
+import { STONES, stoneSpots } from './stones';
 import {
   LAYOUT,
   approachPoint,
@@ -11,6 +12,7 @@ import {
   scatterDecorations,
   scatterForest,
   signBoard,
+  teachSpotPlace,
   type ForestLayout,
   type Vec2,
 } from './layout';
@@ -166,6 +168,41 @@ describe('approachPoint', () => {
       expect(dist(stand, p)).toBeCloseTo(LAYOUT.APPROACH_DISTANCE, 5);
       for (const other of all) if (other !== p) expect(dist(stand, other)).toBeGreaterThan(1.2);
     }
+  });
+});
+
+describe('teachSpotPlace (Mia at the heart of each grove)', () => {
+  it.each(SIZES)('keeps trees, answer stones and answering spots clear of Mia (%i groves, %i trees)', (n, m) => {
+    const { concepts, trees } = makeWorld(n, m);
+    const layout = planForest(concepts);
+    const placed = placeBaseTrees(layout, trees);
+    const all = Object.values(placed);
+    const extras: Vec2[] = [];
+    layout.groves.forEach((g) => {
+      for (let k = 0; k < 6; k++) extras.push(findTreeSpot(layout, g.index, [...all, ...extras]));
+    });
+
+    for (const g of layout.groves) {
+      const { mia, stand } = teachSpotPlace(g);
+      for (const t of [...all, ...extras]) {
+        expect(dist(t, mia)).toBeGreaterThanOrEqual(LAYOUT.HEART_CLEAR + LAYOUT.TREE_GAP / 2);
+        expect(dist(t, stand)).toBeGreaterThan(1.5);
+        const approach = approachPoint(layout, t);
+        expect(dist(approach, mia)).toBeGreaterThan(LAYOUT.HEART_CLEAR);
+        const others = [...all, ...extras].filter((o) => o !== t);
+        for (const stone of stoneSpots(t, approach, 4, others)) {
+          expect(dist(stone, mia)).toBeGreaterThanOrEqual(LAYOUT.HEART_CLEAR + STONES.RADIUS + 0.3);
+        }
+      }
+    }
+  });
+
+  it('puts the kid in front of Mia and a little to her side, so the camera sees both', () => {
+    const layout = planForest([{ id: 'c1', trees: 5 }]);
+    const { mia, stand } = teachSpotPlace(layout.groves[0]);
+    expect(stand.z).toBeGreaterThan(mia.z);
+    expect(Math.abs(stand.x - mia.x)).toBeGreaterThan(0.5);
+    expect(dist(stand, mia)).toBeLessThan(2.5);
   });
 });
 

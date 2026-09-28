@@ -11,7 +11,8 @@ export type EndpointName =
   | 'generate-intervention'
   | 'generate-targeted-questions'
   | 'deploy-teacher-quest'
-  | 'generate-rundown';
+  | 'generate-rundown'
+  | 'grade-teach-back';
 
 export interface GeminiRequest {
   endpointName: EndpointName;

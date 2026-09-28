@@ -129,3 +129,35 @@
 @utility rise-in {
   animation: rise-in 180ms ease-out both;
 }
+
+/* "…" that fills in one dot at a time, for a character who is thinking. */
+@keyframes thinking-dots {
+  0% {
+    content: '';
+  }
+  25% {
+    content: '.';
+  }
+  50% {
+    content: '..';
+  }
+  75% {
+    content: '...';
+  }
+}
+@utility thinking-dots {
+  display: inline-block;
+  width: 1.2em;
+  text-align: left;
+  &::after {
+    content: '';
+    animation: thinking-dots 1.2s steps(1, end) infinite;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thinking-dots::after {
+    animation: none;
+    content: '...';
+  }
+}

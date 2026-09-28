@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calibrationLine, dueTrees, judgmentFeedback, reviewCard } from './memory';
+import { calibrationLine, dueTrees, judgmentFeedback, judgmentGap, reviewCard } from './memory';
 
 describe('reviewCard (Leitner boxes)', () => {
   it('learns on the first right answer and masters on a right answer in a later session', () => {
@@ -52,5 +52,14 @@ describe('judgmentFeedback (reflection)', () => {
   it('says nothing extra when feeling and results agree', () => {
     expect(judgmentFeedback(3, 0.9)).toBeNull();
     expect(judgmentFeedback(2, 0.4)).toBeNull();
+  });
+});
+
+describe('judgmentGap', () => {
+  it('names a kid who feels sure but is not, and one who doubts but is', () => {
+    expect(judgmentGap(4, 0.4)).toBe('overconfident');
+    expect(judgmentGap(1, 1)).toBe('underconfident');
+    expect(judgmentGap(3, 0.9)).toBeNull();
+    expect(judgmentGap(2, 0.5)).toBeNull();
   });
 });

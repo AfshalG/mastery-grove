@@ -18,7 +18,17 @@ export default defineConfig({
     screenshot: 'only-on-failure',
   },
   projects: [
-    { name: 'desktop', use: { ...devices['Desktop Chrome'], channel: 'chrome', viewport: { width: 1440, height: 900 } } },
+    {
+      name: 'desktop',
+      use: {
+        ...devices['Desktop Chrome'],
+        channel: 'chrome',
+        viewport: { width: 1440, height: 900 },
+        // A fake microphone (a steady tone), so the voice-note path to Mia can be tested without a real one.
+        permissions: ['microphone'],
+        launchOptions: { args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'] },
+      },
+    },
     // iPhone 13 screen and touch, driven by Chrome (the device preset defaults to WebKit).
     { name: 'phone', use: { ...devices['iPhone 13'], browserName: 'chromium', channel: 'chrome' } },
   ],

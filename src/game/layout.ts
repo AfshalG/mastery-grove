@@ -46,7 +46,13 @@ export const LAYOUT = {
   TRAIL_HALF_WIDTH: 1.3,
   /** Closest a tree may stand to the trail's centreline, so no trunk or canopy sits on the path. */
   TRAIL_GAP: 3,
-  RING_MIN_RADIUS: 5,
+  /**
+   * Base rings start this far out. It leaves the heart of each grove open for Mia's teach spot, with the
+   * answer stones for any tree (which rise between the kid and the centre) still clear of her.
+   */
+  RING_MIN_RADIUS: 6,
+  /** Mia's teach spot at the heart of a grove: her stump, her knees and the slate she holds up. */
+  HEART_CLEAR: 0.9,
   /** Arc length between neighbours on a ring. */
   RING_SLOT: 3.4,
   /** Distance between the base ring and each outer ring for extra trees. */
@@ -273,6 +279,17 @@ export function approachPoint(layout: ForestLayout, tree: Vec2): Vec2 {
     len = 1;
   }
   return { x: tree.x + (dx / len) * LAYOUT.APPROACH_DISTANCE, z: tree.z + (dz / len) * LAYOUT.APPROACH_DISTANCE };
+}
+
+/**
+ * Mia sits at the heart of her grove, facing the camera (which always looks toward -z). The kid talks to her
+ * from in front and a little to her right, so the chase camera frames both of them.
+ */
+export function teachSpotPlace(g: GroveSpot): { mia: Vec2; stand: Vec2 } {
+  return {
+    mia: { x: g.centre.x, z: g.centre.z },
+    stand: { x: g.centre.x + 1.2, z: g.centre.z + 1.7 },
+  };
 }
 
 /** Keeps a point inside the walkable area. */

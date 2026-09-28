@@ -2,6 +2,7 @@ import express from 'express';
 import { Type } from '@google/genai';
 import type { GeminiClient } from './gemini';
 import { buildCompactList, buildPlainCodeRundown } from './rundown';
+import { CannotListenError, gradeTeachBack, parseTeachBackInput } from './teachBack';
 
 const NO_KEY = 'GEMINI_API_KEY is not configured on the server. Add it in the Secrets panel (AI Studio) or in .env (local).';
 
@@ -53,6 +54,11 @@ WORLD SPECIFICATION:
 5. Citations:
    - If worksheet text or an uploaded worksheet file is provided, every question MUST be derived from or directly present in that worksheet, and "citation" must include { "page": <page number (1-indexed)>, "quote": "<exact line or phrase from worksheet>" }.
    - If only a topic was provided without worksheet text or file, set "citation" to null.
+6. Teach spots: exactly one per concept. Mia, a classmate, sits in that concept's grove, stuck on ONE of its misconceptions, and the student explains it to her.
+   - "conceptId": the concept. "misconceptionId": the misconception Mia has, from your list for that concept.
+   - "puzzledThought": what Mia says, at most 25 words, in a 10-year-old's voice: her wrong working and her question (e.g. "To simplify 4/8, I halved the top and got 2/8. My teacher marked it wrong. Why?").
+   - "board": her wrong working in at most 18 characters, for the slate she holds up (e.g. "4/8 = 2/8 ?").
+   - "rubricPoints": exactly 3 points a good explanation to Mia covers, each at most 15 plain kid words: why her way is wrong, the right way, and the right answer.
 `;
 
       if (topic) promptIntro += `\nTOPIC: "${topic}"\n`;
@@ -180,8 +186,23 @@ WORLD SPECIFICATION:
                   required: ['id', 'conceptId', 'question', 'choices', 'answerIndex', 'explanation'],
                 },
               },
+              teachSpots: {
+                type: Type.ARRAY,
+                description: 'One per concept: Mia and the mix-up she needs explained',
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    conceptId: { type: Type.STRING },
+                    misconceptionId: { type: Type.STRING },
+                    puzzledThought: { type: Type.STRING, description: 'At most 25 words, in a 10-year-old voice' },
+                    board: { type: Type.STRING, description: 'Her wrong working, at most 18 characters' },
+                    rubricPoints: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'Exactly 3 short points' },
+                  },
+                  required: ['conceptId', 'misconceptionId', 'puzzledThought', 'board', 'rubricPoints'],
+                },
+              },
             },
-            required: ['subject', 'concepts', 'misconceptions', 'trees'],
+            required: ['subject', 'concepts', 'misconceptions', 'trees', 'teachSpots'],
           },
         },
       });
@@ -769,6 +790,19 @@ PRODUCE A COMPREHENSIVE RUNDOWN:
       console.warn('Gemini rundown failed or quota exhausted. Using offline plain code generator:', error?.message || error);
       // Graceful plain-code fallback to guarantee the modal displays
       return res.json(buildPlainCodeRundown(worldSubject, compactList));
+    }
+  });
+
+  // Mia's teach-back: Gemini marks the rubric (and listens to a voice note); code decides the pass.
+  router.post('/grade-teach-back', async (req, res) => {
+    const parsed = parseTeachBackInput(req.body);
+    if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+    try {
+      return res.json(await gradeTeachBack(gemini, parsed.input));
+    } catch (error: any) {
+      if (error instanceof CannotListenError) return res.status(503).json({ error: error.message });
+      console.error('Error grading teach-back:', error);
+      return res.status(500).json({ error: 'Mia could not follow that. Try again?' });
     }
   });
 

@@ -20,7 +20,7 @@ export const ReflectionCard: React.FC = () => {
     useShallow((s) => ({
       conceptId: s.pendingReflection,
       world: s.world,
-      questionOpen: s.selectedTree !== null,
+      questionOpen: s.selectedTree !== null || s.openTeachSpot !== null,
       feedbackOpen: s.showExplanationModal,
       submitReflection: s.submitReflection,
       dismissReflection: s.dismissReflection,

@@ -16,6 +16,7 @@ import { Sky } from './Sky';
 import { BackgroundForest } from './BackgroundForest';
 import { Fox } from './Fox';
 import { ProfessorByte } from './ProfessorByte';
+import { MiaSpots } from './Mia';
 
 /**
  * The sun rides along with the player, so every grove gets shadows however long the trail is
@@ -91,6 +92,8 @@ export const ForestScene: React.FC = () => {
           <StudentAvatar />
           <Fox />
           <ProfessorByte />
+          {/* Mia, at the heart of each open grove, waiting for someone to explain her mix-up */}
+          <MiaSpots />
 
           {/* Smooth Chase Camera */}
           <ThirdPersonCamera />

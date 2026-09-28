@@ -4,9 +4,10 @@ import * as THREE from 'three';
 import { TreeData } from '../../types/game';
 import { useGameStore } from '../../store/useGameStore';
 import { approachPoint } from '../../game/layout';
-import { liveAvatar } from '../../game/liveAvatar';
+import { cameraFocus } from '../../game/liveAvatar';
 import { damp } from '../../game/motion';
 import { idHash, skinFor } from '../../game/skins';
+import { applyFade } from './fade';
 
 interface TreeMeshProps {
   tree: TreeData;
@@ -52,26 +53,6 @@ const BLOSSOMS: Array<[number, number, number]> = [
 
 const shade = (hex: string, toward: THREE.Color, amount: number) => `#${new THREE.Color(hex).lerp(toward, amount).getHexString()}`;
 
-/** Fades a tree's own meshes, keeping each material's original opacity as the full value. */
-function applyFade(root: THREE.Object3D, amount: number) {
-  const faded = amount < 0.999;
-  root.traverse((child) => {
-    if (!(child instanceof THREE.Mesh) || Array.isArray(child.material)) return;
-    const mat = child.material as THREE.Material;
-    if (mat.userData.baseOpacity === undefined) {
-      mat.userData.baseOpacity = mat.opacity;
-      mat.userData.baseTransparent = mat.transparent;
-    }
-    mat.opacity = mat.userData.baseOpacity * amount;
-    mat.depthWrite = !faded; // a see-through tree shouldn't hide what's behind it
-    const transparent = faded || mat.userData.baseTransparent;
-    if (mat.transparent !== transparent) {
-      mat.transparent = transparent;
-      mat.needsUpdate = true;
-    }
-  });
-}
-
 export const TreeMesh: React.FC<TreeMeshProps> = React.memo(({ tree, isLocked }) => {
   const bodyRef = useRef<THREE.Group>(null);
   const beaconRef = useRef<THREE.Mesh>(null);
@@ -81,7 +62,8 @@ export const TreeMesh: React.FC<TreeMeshProps> = React.memo(({ tree, isLocked })
   const pop = useRef(1); // 0..1 through the grow-pop; 1 = finished
   const [hovered, setHovered] = useState(false);
 
-  const isTutorsPick = useGameStore((s) => s.tutorBeaconTreeId === tree.id);
+  // Byte's pick glows, except while the kid is talking to Mia (the beam would stand between them and the camera).
+  const isTutorsPick = useGameStore((s) => s.tutorBeaconTreeId === tree.id && s.openTeachSpot === null);
   // While this tree's question is open, its floating picture takes the space above it.
   const isOpen = useGameStore((s) => s.selectedTree?.id === tree.id);
   const moveTo = useGameStore((s) => s.moveTo);
@@ -155,11 +137,11 @@ export const TreeMesh: React.FC<TreeMeshProps> = React.memo(({ tree, isLocked })
       bodyRef.current.scale.setScalar(look.scale * size * popScale);
     }
 
-    // Fade this tree while it stands between the camera and the player, so it never hides them.
+    // Fade this tree while it stands between the camera and what it's looking at, so it never hides the kid (or Mia).
     const cam = state.camera.position;
-    const sx = liveAvatar.x - cam.x;
+    const sx = cameraFocus.x - cam.x;
     const sy = 1 - cam.y;
-    const sz = liveAvatar.z - cam.z;
+    const sz = cameraFocus.z - cam.z;
     const lenSq = sx * sx + sy * sy + sz * sz;
     let between = false;
     if (lenSq > 0.01) {

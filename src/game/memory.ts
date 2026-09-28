@@ -33,10 +33,18 @@ export function calibrationLine(confidence: ConfidenceLevel, correct: boolean): 
   return correct ? 'Nice. You can be surer next time.' : 'Close. Let’s look at it again.';
 }
 
+/** Whether a kid's rating of a grove disagrees with how they did: feels sure but isn't, or doubts but is. */
+export function judgmentGap(rating: 1 | 2 | 3 | 4, accuracy: number): 'overconfident' | 'underconfident' | null {
+  if (rating >= 3 && accuracy < 0.7) return 'overconfident';
+  if (rating <= 2 && accuracy >= 0.7) return 'underconfident';
+  return null;
+}
+
 /** Reflection feedback: only when how the kid feels and how they did disagree. */
 export function judgmentFeedback(rating: 1 | 2 | 3 | 4, accuracy: number): string | null {
   const pct = Math.round(accuracy * 100);
-  if (rating >= 3 && accuracy < 0.7) return `You felt sure, but got ${pct}% right. Worth one more look before a test.`;
-  if (rating <= 2 && accuracy >= 0.7) return `You got ${pct}% right. You know more than you think.`;
+  const gap = judgmentGap(rating, accuracy);
+  if (gap === 'overconfident') return `You felt sure, but got ${pct}% right. Worth one more look before a test.`;
+  if (gap === 'underconfident') return `You got ${pct}% right. You know more than you think.`;
   return null;
 }
