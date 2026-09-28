@@ -1,4 +1,4 @@
-import type { FractionVisual } from '../types/game';
+import type { FractionVisual, Passage } from '../types/game';
 
 /** More slices than this can't be drawn or counted on a phone. */
 const MAX_PARTS = 24;
@@ -81,4 +81,12 @@ export function answerComparison(
       : null;
 
   return kid ? { kid, target, targetLabel } : null;
+}
+
+/** A passage from Gemini (or a save), checked before it's shown: text only, and not too long for a card. */
+export function sanitizePassage(p: unknown): Passage | undefined {
+  if (!p || typeof p !== 'object') return undefined;
+  const { title, text } = p as { title?: unknown; text?: unknown };
+  if (typeof text !== 'string' || !text.trim()) return undefined;
+  return { title: typeof title === 'string' ? title.trim().slice(0, 80) : '', text: text.trim().slice(0, 1200) };
 }

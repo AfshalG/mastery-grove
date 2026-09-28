@@ -30,7 +30,7 @@ import { liveAvatar } from '../game/liveAvatar';
 import { miaStatus, validTeachSpots } from '../game/teach';
 import { diagnoseServe } from '../game/serve';
 import { stoneSpots } from '../game/stones';
-import { sanitizeVisual } from '../game/visuals';
+import { sanitizePassage, sanitizeVisual } from '../game/visuals';
 import { computeTutorPick } from '../game/planner';
 import { dueTrees, judgmentFeedback, reviewCard, type Card } from '../game/memory';
 import {
@@ -382,6 +382,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         state: 'unanswered' as const,
         isTeacherDeployed: true,
         visual: sanitizeVisual(t.visual),
+        passage: sanitizePassage(t.passage),
         position: undefined,
         groveIndex: Math.max(0, world.concepts.findIndex((c) => c.id === t.conceptId)),
       }));
@@ -514,7 +515,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   loadWorld: (rawWorld: WorldData) => {
     // Unique tree ids, and every picture checked before anything draws it (a malformed one crashed the scene).
-    rawWorld = { ...rawWorld, trees: dedupeTreeIds(rawWorld.trees).map((t) => ({ ...t, visual: sanitizeVisual(t.visual) })) };
+    rawWorld = {
+      ...rawWorld,
+      trees: dedupeTreeIds(rawWorld.trees).map((t) => ({ ...t, visual: sanitizeVisual(t.visual), passage: sanitizePassage(t.passage) })),
+    };
 
     let savedData: any = null;
     try {
@@ -567,7 +571,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
       if (Array.isArray(savedData.trees) && savedData.trees.length >= defaultTrees.length) {
         // Keep saved progress but recompute every position, so older saves get the current layout.
-        const savedTrees: TreeData[] = savedData.trees.map((t: TreeData) => ({ ...t, visual: sanitizeVisual(t.visual) }));
+        const savedTrees: TreeData[] = savedData.trees.map((t: TreeData) => ({ ...t, visual: sanitizeVisual(t.visual), passage: sanitizePassage(t.passage) }));
         const restored = buildForest(rawWorld, savedTrees);
         initialTrees = restored.trees;
         layout = restored.layout;

@@ -1,6 +1,8 @@
 // Deterministic stand-in for Gemini (GEMINI_MOCK=1). Tests and offline demos get the same replies every time,
 // built from the structured request, so the whole learner loop can run without an API key or any cost.
 import { SAMPLE_WORLD } from '../src/data/sampleWorld';
+import { READING_CHOICE_MISCONCEPTIONS, SAMPLE_READING_WORLD } from '../src/data/readingWorld';
+import { isReadingSubject } from '../src/game/skins';
 import type { EndpointName, GeminiClient } from './gemini';
 import { buildPlainCodeRundown } from './rundown';
 import { keywordMarks } from '../src/game/teach';
@@ -16,11 +18,29 @@ const P_CORRECT = [0.82, 0.64, 0.38, 0.71, 0.45];
 let serial = 0; // Keeps generated question ids unique across calls within one server run.
 const nextId = (prefix: string) => `${prefix}-${++serial}`;
 
+/** For the sample reading forest: the mix-up each wrong choice shows, and what Byte says about it. */
+const READING_LINES: Record<string, { thought: string; hint: string }> = {
+  rm1: { thought: 'You picked a detail that stood out, not what the whole passage is about.', hint: 'What do most of the sentences talk about?' },
+  rm2: { thought: 'You went with the first sentence. Here it’s a hook, not the main idea.', hint: 'Does every sentence fit that idea?' },
+  rm3: { thought: 'You wanted the text to say it out loud. The clues can tell you.', hint: 'Which words in the passage are clues?' },
+  rm4: { thought: 'You answered from your own life, not from the clues in the passage.', hint: 'What does the passage show you?' },
+  rm5: { thought: 'You used the usual meaning of the word, not the meaning in this sentence.', hint: 'What do the words around it tell you?' },
+  rm6: { thought: 'You guessed from how the word looks, not from the clues around it.', hint: 'What is happening in the sentence?' },
+};
+function readingMixUp(question: string, choice: string) {
+  const tree = SAMPLE_READING_WORLD.trees.find((t) => t.question === question);
+  const index = tree ? tree.choices.indexOf(choice) : -1;
+  const id = tree ? READING_CHOICE_MISCONCEPTIONS[tree.id]?.[index] : undefined;
+  if (!id) return null;
+  return { misconceptionId: id, confidence: 0.85, thoughtProcess: READING_LINES[id].thought, scaffoldHint: READING_LINES[id].hint };
+}
+
 const replies: Record<EndpointName, (input: Input) => unknown> = {
-  'generate-world': ({ topic }) => ({
-    ...structuredClone(SAMPLE_WORLD),
-    subject: topic ? String(topic) : SAMPLE_WORLD.subject,
-  }),
+  // A reading topic grows the sample reading forest; anything else, the fractions one.
+  'generate-world': ({ topic }) => {
+    const base = isReadingSubject(String(topic ?? '')) ? SAMPLE_READING_WORLD : SAMPLE_WORLD;
+    return { ...structuredClone(base), subject: topic ? String(topic) : base.subject };
+  },
 
   'predict-trees': ({ openTrees = [], misconceptions = [] }) => ({
     predictions: openTrees.map((t: Input) => {
@@ -39,12 +59,16 @@ const replies: Record<EndpointName, (input: Input) => unknown> = {
     }),
   }),
 
-  'diagnose-thought-process': ({ question = '', studentChoice = '', misconceptions = [] }) => ({
-    misconceptionId: pick<Input>(misconceptions, `${question}|${studentChoice}`)?.id ?? 'unclassified',
-    confidence: 0.8,
-    thoughtProcess: `You picked ${studentChoice || 'that one'}. I think you changed one part but not the other.`,
-    scaffoldHint: 'What happens if you do the same thing to the top and the bottom?',
-  }),
+  'diagnose-thought-process': ({ question = '', studentChoice = '', misconceptions = [] }) => {
+    const reading = readingMixUp(String(question), String(studentChoice));
+    if (reading) return reading;
+    return {
+      misconceptionId: pick<Input>(misconceptions, `${question}|${studentChoice}`)?.id ?? 'unclassified',
+      confidence: 0.8,
+      thoughtProcess: `You picked ${studentChoice || 'that one'}. I think you changed one part but not the other.`,
+      scaffoldHint: 'What happens if you do the same thing to the top and the bottom?',
+    };
+  },
 
   'revise-thought-process': ({ studentWords = '', misconceptions = [] }) => ({
     misconceptionId: pick<Input>(misconceptions, String(studentWords))?.id ?? 'unclassified',

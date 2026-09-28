@@ -225,7 +225,7 @@ export const QuestionModal: React.FC = () => {
                 )}
                 <p className="text-sm font-bold text-leaf-deep">{calibrationLine(lastAnswerResult.confidence, true)}</p>
                 <p className="text-base text-ink-soft max-w-xs">
-                  {shorten(lastAnswerResult.tree.explanation || 'Dividing top and bottom keeps the portion equal.', 24)}
+                  {shorten(lastAnswerResult.tree.explanation || 'That’s the one.', 24)}
                 </p>
                 <button onClick={dismissFeedback} data-testid="continue-btn" className="btn btn-leaf w-full py-3 text-base mt-2">
                   Keep going
@@ -281,7 +281,7 @@ export const QuestionModal: React.FC = () => {
                     ) : (
                       <>
                         {(() => {
-                          const raw = diagnosisResult?.thoughtProcess || currentThoughtRecord?.thoughtProcess || 'You used whole-number rules.';
+                          const raw = diagnosisResult?.thoughtProcess || currentThoughtRecord?.thoughtProcess || 'You went with the answer that looked right at first.';
                           // A hands-on serve is marked by plain rules, so Byte says exactly what happened rather than guessing.
                           if (exactServe) {
                             return (
@@ -394,6 +394,14 @@ export const QuestionModal: React.FC = () => {
               {/* No label on the picture: "4/8 shaded" would answer "what fraction is shaded?" */}
               <FractionVisualSVG visual={hideServeAnswer(selectedTree.visual, selectedTree.kind)!} size={160} hideLabel className="w-full max-w-xs" />
             </div>
+          )}
+
+          {/* Reading questions: the passage to read first, like a page from a storybook */}
+          {selectedTree.passage && (
+            <article data-testid="passage-card" className="rounded-2xl border-2 border-paper-edge border-l-[6px] border-l-sun bg-white px-4 py-3 space-y-1.5 max-h-[30dvh] overflow-y-auto">
+              {selectedTree.passage.title && <h4 className="text-xs font-black uppercase tracking-wider text-leaf-deep">{selectedTree.passage.title}</h4>}
+              <p className="text-[15px] leading-relaxed font-semibold">{selectedTree.passage.text}</p>
+            </article>
           )}
 
           <h3 className="text-xl font-extrabold leading-snug">{selectedTree.question}</h3>

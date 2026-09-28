@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AUTUMN, MEADOW, idHash, skinFor } from './skins';
+import { AUTUMN, MEADOW, idHash, isReadingSubject, skinFor } from './skins';
 
 describe('skinFor', () => {
   it('gives reading and language worlds the autumn wood', () => {
@@ -20,5 +20,14 @@ describe('idHash', () => {
     expect(idHash('t1_1')).toBe(idHash('t1_1'));
     const shades = new Set(['t1_1', 't1_2', 't1_3', 't1_4', 't1_5', 't1_6'].map((id) => idHash(id) % 3));
     expect(shades.size).toBeGreaterThan(1);
+  });
+});
+
+describe('isReadingSubject', () => {
+  it('spots reading and language subjects', () => {
+    expect(isReadingSubject('Primary 4 English: Reading')).toBe(true);
+    expect(isReadingSubject('Vocabulary in context')).toBe(true);
+    expect(isReadingSubject('Primary 5 Fractions')).toBe(false);
+    expect(isReadingSubject(undefined)).toBe(false);
   });
 });

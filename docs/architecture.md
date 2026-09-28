@@ -116,6 +116,7 @@ interface Tree {
   id: string; conceptId: string; question: string; choices: string[]; answerIndex: number;
   explanation: string; citation: { page: number; quote: string } | null;
   visual?: FractionVisual;          // cake, two cakes, bar
+  passage?: { title: string; text: string };   // reading worlds: a short passage to read first
   kind?: 'mcq' | 'recall' | 'serve';
   origin: 'base' | 'made-for-you' | 'teacher' | 'memory';   // replaces the isX flags
   sourceTreeId?: string; targetMisconceptionId?: string;
