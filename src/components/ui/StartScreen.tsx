@@ -186,6 +186,8 @@ export const StartScreen: React.FC = () => {
     try {
       const res = await fetch('/api/generate-world', {
         method: 'POST',
+        // A stuck request gives up and shows the retry, instead of spinning.
+        signal: AbortSignal.timeout(150_000),
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });

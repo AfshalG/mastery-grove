@@ -441,6 +441,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
     try {
       const res = await fetch('/api/grade-teach-back', {
         method: 'POST',
+        // A stuck request gives up and shows the retry, instead of spinning.
+        signal: AbortSignal.timeout(75_000),
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           conceptName: world?.concepts.find((c) => c.id === conceptId)?.name ?? '',
@@ -827,6 +829,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
       const res = await fetch('/api/predict-trees', {
         method: 'POST',
+        // A stuck request gives up and shows the retry, instead of spinning.
+        signal: AbortSignal.timeout(45_000),
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
@@ -910,6 +914,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
           try {
             const res = await fetch('/api/generate-retention-check', {
               method: 'POST',
+              // A stuck request gives up and shows the retry, instead of spinning.
+              signal: AbortSignal.timeout(45_000),
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 conceptName: concept.questName,
@@ -1400,6 +1406,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
         const tree = lastAnswerResult?.tree;
         const res = await fetch('/api/revise-thought-process', {
           method: 'POST',
+          // A stuck request gives up and shows the retry, instead of spinning.
+          signal: AbortSignal.timeout(60_000),
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             question: currentThoughtRecord.question,
@@ -1493,6 +1501,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
       try {
         const res = await fetch('/api/generate-targeted-questions', {
           method: 'POST',
+          // A stuck request gives up and shows the retry, instead of spinning.
+          signal: AbortSignal.timeout(60_000),
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             misconception: misObj,
@@ -1545,6 +1555,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
     try {
       const res = await fetch('/api/deploy-teacher-quest', {
         method: 'POST',
+        // A stuck request gives up and shows the retry, instead of spinning.
+        signal: AbortSignal.timeout(90_000),
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           misconception: mis,
@@ -1619,6 +1631,8 @@ async function requestDiagnosis(ctx: DiagnosisContext, payload: unknown) {
   try {
     const res = await fetch('/api/diagnose-thought-process', {
       method: 'POST',
+      // A stuck request gives up and shows the retry, instead of spinning.
+      signal: AbortSignal.timeout(60_000),
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
@@ -1689,6 +1703,8 @@ function applyDiagnosis(ctx: DiagnosisContext, diagnosis: DiagnosisResponse) {
   // The sapling comes back as a variant aimed at this exact mix-up, with the numbers changed.
   fetch('/api/generate-targeted-sapling', {
     method: 'POST',
+    // A stuck request gives up and shows the retry, instead of spinning.
+    signal: AbortSignal.timeout(60_000),
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       originalQuestion: ctx.tree.question,

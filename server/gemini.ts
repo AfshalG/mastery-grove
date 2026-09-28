@@ -36,15 +36,48 @@ export const GEMINI_MODELS = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini
 const CACHE_TTL_MS = 10 * 60 * 1000;
 const BACKOFF_MS = [1000, 2000, 4000];
 
+/**
+ * How long one model gets to answer before we cancel and ask the next. Without a limit, one stuck request left
+ * the teacher's "Byte is writing a lesson plan…" spinning forever. Building a world (from a photo, say) is slower.
+ */
+export function timeLimitFor(endpoint: EndpointName) {
+  return endpoint === 'generate-world' ? 120_000 : endpoint === 'grade-teach-back' ? 45_000 : 40_000;
+}
+
+class TimedOut extends Error {}
+
 type GenerateContent = (params: GenerateContentParameters) => Promise<{ text?: string }>;
 
 export function createGeminiClient(deps: {
   generateContent: GenerateContent;
   models?: string[];
   sleep?: (ms: number) => Promise<void>;
+  /** Per-attempt time limit; tests pass a short one. */
+  timeoutMs?: (endpoint: EndpointName) => number;
 }): GeminiClient {
   const models = deps.models ?? GEMINI_MODELS;
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const limit = deps.timeoutMs ?? timeLimitFor;
+
+  /** One attempt, cancelled (abortSignal) and given up on if it takes longer than the limit. */
+  async function tryModel(model: string, req: GeminiRequest) {
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const expired = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        controller.abort();
+        reject(new TimedOut(`${model} didn’t answer in time for ${req.endpointName}.`));
+      }, limit(req.endpointName));
+    });
+    try {
+      return await Promise.race([
+        deps.generateContent({ model, contents: req.contents, config: { ...req.config, abortSignal: controller.signal } }),
+        expired,
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
   const cache = new Map<string, { data: unknown; expiresAt: number }>();
 
   async function callWithFallback(req: GeminiRequest) {
@@ -53,9 +86,13 @@ export function createGeminiClient(deps: {
     for (const model of models) {
       for (let attempt = 0; attempt <= BACKOFF_MS.length; attempt++) {
         try {
-          return await deps.generateContent({ model, contents: req.contents, config: req.config });
+          return await tryModel(model, req);
         } catch (error: any) {
           lastError = error;
+          if (error instanceof TimedOut) {
+            console.warn(`[Gemini] ${error.message} Trying the next model.`);
+            break;
+          }
           const msg = String(error?.message || '');
           const status = error?.status || error?.statusCode;
 
