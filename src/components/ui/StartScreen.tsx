@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AlertCircle, ArrowRight, Camera, FileText, PenLine } from 'lucide-react';
+import { AlertCircle, ArrowRight, Camera, FileText, PenLine, Users } from 'lucide-react';
 import { useGameStore } from '../../store/useGameStore';
 import { WorldData } from '../../types/game';
 import { Sprout } from './icons';
@@ -64,6 +64,63 @@ const CoverArt: React.FC = () => (
     </g>
   </svg>
 );
+
+/** Join a class: the teacher's code and a first name, and the teacher's forest opens with classmates in it. */
+const JoinClass: React.FC<{ onJoining: () => void }> = ({ onJoining }) => {
+  const joinClassRoom = useGameStore((s) => s.joinClassRoom);
+  const roomError = useGameStore((s) => s.roomError);
+  const [code, setCode] = useState('');
+  const [name, setName] = useState('');
+  const [joining, setJoining] = useState(false);
+  const ready = code.replace(/[^a-z0-9]/gi, '').length === 4 && name.trim().length > 0;
+
+  const join = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!ready || joining) return;
+    onJoining();
+    setJoining(true);
+    await joinClassRoom(code, name.trim());
+    setJoining(false);
+  };
+
+  return (
+    <form onSubmit={join} className="paper w-full p-4 sm:p-5 space-y-3" data-testid="join-class">
+      <div className="flex items-center gap-2.5">
+        <Users className="w-5 h-5 text-leaf-deep" />
+        <h2 className="text-lg font-black">Join your class</h2>
+      </div>
+      <div className="grid grid-cols-[7.5rem_1fr] gap-2">
+        <input
+          value={code}
+          onChange={(e) => setCode(e.target.value.toUpperCase().slice(0, 6))}
+          placeholder="CODE"
+          aria-label="Class code"
+          autoComplete="off"
+          autoCapitalize="characters"
+          data-testid="class-code-input"
+          className={`${field} text-center font-black tracking-[0.3em] uppercase`}
+        />
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value.slice(0, 20))}
+          placeholder="Your first name"
+          aria-label="Your first name"
+          autoComplete="given-name"
+          data-testid="class-name-input"
+          className={field}
+        />
+      </div>
+      {roomError && (
+        <p className="text-sm font-bold text-berry-deep" data-testid="join-error">
+          {roomError}
+        </p>
+      )}
+      <button type="submit" disabled={!ready || joining} data-testid="join-class-btn" className="btn btn-leaf w-full py-2.5">
+        {joining ? 'Joining…' : 'Join'}
+      </button>
+    </form>
+  );
+};
 
 export const StartScreen: React.FC = () => {
   const loadWorld = useGameStore((s) => s.loadWorld);
@@ -165,6 +222,8 @@ export const StartScreen: React.FC = () => {
           Walk the fractions forest
           <ArrowRight className="w-5 h-5" />
         </button>
+
+        <JoinClass onJoining={() => growRequest.current++} />
 
         <section className="paper w-full p-4 sm:p-5 space-y-4">
           <div>

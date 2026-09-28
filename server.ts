@@ -1,5 +1,6 @@
 // Entry point (AI Studio runs `tsx server.ts`). Routes live in server/api.ts, the Gemini client in server/gemini.ts.
 import express from 'express';
+import { createServer } from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
@@ -7,6 +8,7 @@ import { GoogleGenAI } from '@google/genai';
 import { createApp } from './server/app';
 import { createGeminiClient, type GeminiClient } from './server/gemini';
 import { createMockGemini } from './server/mockGemini';
+import { attachRealtime } from './server/realtime';
 
 dotenv.config();
 
@@ -34,6 +36,9 @@ function makeGemini(): GeminiClient | null {
 }
 
 const app = createApp(makeGemini());
+// One HTTP server for the app, the API and the class rooms (Socket.IO at /socket.io).
+const httpServer = createServer(app);
+attachRealtime(httpServer);
 
 // Setup Vite middleware in dev or static files in prod
 async function startServer() {
@@ -51,7 +56,7 @@ async function startServer() {
     });
   }
 
-  app.listen(Number(PORT), '0.0.0.0', () => {
+  httpServer.listen(Number(PORT), '0.0.0.0', () => {
     console.log(`Mastery Grove server running on http://0.0.0.0:${PORT}`);
   });
 }

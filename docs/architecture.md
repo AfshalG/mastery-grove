@@ -225,11 +225,11 @@ Every call goes through one client: a model chain on 429 or 503, retries with ba
 
 | Direction | Event | Payload |
 |---|---|---|
-| client → server | `room:create` | `{ world }`, returns `{ code }` (teacher) |
-| client → server | `room:join` | `{ code, name, role }`, returns `{ world, players, session }` |
+| client → server | `room:create` | `{ world, name }`, returns the code, the teacher's player id and the players (teacher) |
+| client → server | `room:join` | `{ code, name, role, playerId? }`, returns `{ world, players, session, deployed }`; the same `playerId` rejoins as the same player after a drop |
 | client → server | `presence:move` (volatile, up to 10 Hz) | `{ x, z, yaw, moving }` |
-| client → server | `learner:summary` (on change) | `{ activeMisconceptionId, flags, calibration, groveHealth, predictionStats }` |
-| teacher → server | `teacher:deploy`, `teacher:next-session` | `{ misconceptionId }`, `{}` |
+| client → server | `learner:summary` (0.8 s after a change) | the student's learner model: mix-up strengths, answers, flags, Byte's score, teach-backs, reflections |
+| teacher → server | `teacher:deploy`, `teacher:next-session` | `{ trees, label }` (the quest Gemini wrote on the teacher's device), nothing |
 | server → room | `presence:update` (volatile), `room:players`, `player:left` | positions and the player list |
 | server → teacher | `room:roster` | every student's summary |
 | server → students | `quest:deployed`, `session:changed` | new trees, session number |

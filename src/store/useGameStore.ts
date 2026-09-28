@@ -18,7 +18,10 @@ import {
   TeachBackRecord,
   TeachBackResult,
   TeachSpot,
+  ClassmateData,
 } from '../types/game';
+import type { PublicPlayer, Role } from '../types/realtime';
+import { createRoom, joinRoom, leaveRoom, sendMove, sendNextSession, sendQuest, sendSummary, type RoomEvents } from '../net/classRoom';
 import { SAMPLE_WORLD } from '../data/sampleWorld';
 import { buildForest, isExtraTree, plantExtraTrees } from '../game/forest';
 import { approachPoint, clampToBounds, routeTo, teachSpotPlace, type ForestLayout, type Vec2 } from '../game/layout';
@@ -53,6 +56,15 @@ interface LastAnswerInfo {
   confidence: ConfidenceLevel;
   prediction: TreePrediction | null;
   predictionHit: PredictionHit | null;
+}
+
+/** The class room this device is in, if any. */
+export interface RoomInfo {
+  code: string;
+  playerId: string;
+  role: Role;
+  name: string;
+  status: 'connected' | 'reconnecting';
 }
 
 interface GameStore {
@@ -104,6 +116,22 @@ interface GameStore {
   /** Saves the kid's reflection and returns the feedback line, if their feeling and results disagree. */
   submitReflection: (rating: ReflectionRating, note: string) => string | null;
   dismissReflection: () => void;
+  // Class rooms (Socket.IO): classmates in the same forest, and a live roster for the teacher
+  room: RoomInfo | null;
+  roomPlayers: PublicPlayer[];
+  /** Live students, for the teacher's view. */
+  roster: ClassmateData[];
+  roomError: string | null;
+  /** Teacher: open a room for the forest that's loaded. Returns the code, or null. */
+  openClassRoom: (name: string) => Promise<string | null>;
+  /** Student: join with a code; the teacher's forest loads. */
+  joinClassRoom: (code: string, name: string) => Promise<boolean>;
+  leaveClassRoom: () => void;
+  /** Plants trees the teacher sent (or deployed here), skipping any already planted. */
+  plantTeacherTrees: (trees: TreeData[], label: string, quiet?: boolean) => void;
+  /** Starts the next session here and, for a teacher with a room open, for the whole class. */
+  startClassSession: () => Promise<void>;
+
   // Mia's teach-back
   /** The world's teach spots that are usable, at most one per grove. */
   teachSpots: TeachSpot[];
@@ -299,6 +327,75 @@ export const useGameStore = create<GameStore>((set, get) => ({
     return feedback;
   },
   dismissReflection: () => set({ pendingReflection: null }),
+
+  room: null,
+  roomPlayers: [],
+  roster: [],
+  roomError: null,
+  openClassRoom: async (name) => {
+    const { world } = get();
+    if (!world) return null;
+    set({ roomError: null });
+    const reply = await createRoom(world, name, roomEvents);
+    if (!reply.ok) {
+      set({ roomError: reply.error });
+      return null;
+    }
+    set({ room: { code: reply.code, playerId: reply.playerId, role: 'teacher', name, status: 'connected' }, roomPlayers: reply.players, roster: [] });
+    return reply.code;
+  },
+  joinClassRoom: async (code, name) => {
+    set({ roomError: null });
+    const reply = await joinRoom(code, name, roomEvents);
+    if (!reply.ok) {
+      set({ roomError: reply.error });
+      return false;
+    }
+    // The teacher's forest, with this kid's own saved progress in it if they've played it before.
+    get().loadWorld(reply.world);
+    set({ room: { code: reply.code, playerId: reply.playerId, role: 'student', name, status: 'connected' }, roomPlayers: reply.players, roster: [] });
+    if (reply.deployed.length > 0) get().plantTeacherTrees(reply.deployed, '', true);
+    pushSummary();
+    return true;
+  },
+  leaveClassRoom: () => {
+    leaveRoom();
+    set({ room: null, roomPlayers: [], roster: [], roomError: null });
+  },
+  plantTeacherTrees: (incoming, label, quiet = false) => {
+    const { world, trees } = get();
+    if (!world) return;
+    const have = new Set(trees.map((t) => t.id));
+    const fresh: TreeData[] = incoming
+      .filter(
+        (t) =>
+          !have.has(t.id) &&
+          world.concepts.some((c) => c.id === t.conceptId) &&
+          Array.isArray(t.choices) &&
+          t.choices.every((c) => typeof c === 'string') &&
+          Number.isInteger(t.answerIndex) &&
+          t.answerIndex >= 0 &&
+          t.answerIndex < t.choices.length
+      )
+      .map((t) => ({
+        ...t,
+        state: 'unanswered' as const,
+        isTeacherDeployed: true,
+        visual: sanitizeVisual(t.visual),
+        position: undefined,
+        groveIndex: Math.max(0, world.concepts.findIndex((c) => c.id === t.conceptId)),
+      }));
+    if (fresh.length === 0) return;
+    set((state) => ({ trees: [...state.trees, ...plantExtraTrees(state.layout, state.trees, fresh)] }));
+    if (!quiet) flashToast(`Your teacher sent ${fresh.length} new tree${fresh.length > 1 ? 's' : ''}${label ? `: ${label}` : ''}.`);
+    get().updateTutorBeacon();
+  },
+  startClassSession: async () => {
+    get().startNextSession();
+    if (get().room?.role !== 'teacher') return;
+    const reply = await sendNextSession(roomEvents);
+    if (!reply.ok) set({ roomError: reply.error });
+  },
 
   teachSpots: [],
   teachBacks: [],
@@ -561,6 +658,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   setScreen: (screen) => set({ screen }),
   setAvatarPosition: (pos) => {
     set({ avatarPosition: pos });
+    if (get().room) sendMove(pos[0], pos[2], liveAvatar.heading, liveAvatar.moving);
     // Walking into a grove for the first time counts (crossing into it is a mission).
     const { layout, visitedGroves } = get();
     const inside = layout?.groves.find((g) => Math.hypot(pos[0] - g.centre.x, pos[2] - g.centre.z) < g.clearingRadius);
@@ -1470,10 +1568,14 @@ export const useGameStore = create<GameStore>((set, get) => ({
             groveIndex: Math.max(0, conceptIdx),
           }));
 
-          set((state) => ({ trees: [...state.trees, ...plantExtraTrees(state.layout, state.trees, newQuestTrees)] }));
-          flashToast(`Sent! ${newQuestTrees.length} new trees for "${mis.label}".`);
-
-          get().updateTutorBeacon();
+          get().plantTeacherTrees(newQuestTrees, mis.label, true);
+          // With a class room open, the same trees go to every student's forest.
+          if (get().room?.role === 'teacher') {
+            const sent = await sendQuest(newQuestTrees.map(({ position: _p, ...t }) => t), mis.label, roomEvents);
+            flashToast(sent.ok ? `Sent to ${sent.sentTo} student${sent.sentTo === 1 ? '' : 's'}: ${newQuestTrees.length} new trees for "${mis.label}".` : sent.error);
+          } else {
+            flashToast(`Sent! ${newQuestTrees.length} new trees for "${mis.label}".`);
+          }
         }
       }
     } catch (err) {
@@ -1681,3 +1783,65 @@ function maybeAnnounceMia(conceptId: string, treesBefore: TreeData[]) {
     flashToast(`${MIA_NEEDS_HELP} in ${grove}. She’s sitting in the middle of the grove.`);
   }
 }
+
+// ---- Class rooms -------------------------------------------------------------------------------------------------
+
+/** What the server tells us about the room, applied to the store. */
+const roomEvents: RoomEvents = {
+  players: (players) => useGameStore.setState({ roomPlayers: players }),
+  roster: (roster) => useGameStore.setState({ roster }),
+  quest: ({ trees, label }) => useGameStore.getState().plantTeacherTrees(trees, label),
+  session: () => useGameStore.getState().startNextSession(),
+  status: (status) => {
+    const room = useGameStore.getState().room;
+    if (room && room.status !== status) useGameStore.setState({ room: { ...room, status } });
+  },
+};
+
+const AVATAR_COLOURS = ['#e36f1e', '#5b8fc7', '#8d75dc', '#3fa59b', '#e46f92', '#c2493d', '#3f7d4e'];
+/** A stable colour per player, for the teacher's roster and the classmate's coat in the forest. */
+export const colourFor = (id: string) => AVATAR_COLOURS[[...id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % AVATAR_COLOURS.length];
+
+/** This student's learner model, as the teacher's roster shows it. */
+function summaryOf(s: GameStore): ClassmateData | null {
+  if (!s.room) return null;
+  return {
+    id: s.room.playerId,
+    name: s.room.name,
+    avatarColor: colourFor(s.room.playerId),
+    isLiveStudent: true,
+    misconceptionStrength: s.misconceptionStrength,
+    activeMisconceptionId: s.activeMisconceptionId,
+    overcomeMisconceptions: s.overcomeMisconceptions,
+    predictionStats: s.predictionStats,
+    attempts: s.attempts.slice(0, 30),
+    flags: s.thoughtProcessRecords.slice(0, 20),
+    teachBacks: s.teachBacks.slice(0, 10),
+    reflections: s.reflections.slice(0, 10),
+  };
+}
+
+function pushSummary() {
+  const s = useGameStore.getState();
+  if (s.room?.role !== 'student') return;
+  const summary = summaryOf(s);
+  if (summary) sendSummary(summary);
+}
+
+// A student's summary goes to the teacher a moment after their learner model changes.
+const SUMMARY_FIELDS = [
+  'attempts',
+  'thoughtProcessRecords',
+  'misconceptionStrength',
+  'activeMisconceptionId',
+  'overcomeMisconceptions',
+  'predictionStats',
+  'teachBacks',
+  'reflections',
+] as const;
+let summaryTimer: ReturnType<typeof setTimeout> | undefined;
+useGameStore.subscribe((state, prev) => {
+  if (state.room?.role !== 'student' || !SUMMARY_FIELDS.some((k) => state[k] !== prev[k])) return;
+  clearTimeout(summaryTimer);
+  summaryTimer = setTimeout(pushSummary, 800);
+});

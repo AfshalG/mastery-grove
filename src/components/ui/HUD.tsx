@@ -78,7 +78,10 @@ export const HUD: React.FC = () => {
     openTeachSpot,
     showExplanationModal,
     pendingReflection,
+    room,
+    roomPlayers,
   } = useGameStore();
+  const classHere = roomPlayers.filter((p) => p.connected && p.role === 'student').length;
   // A card is up (question, feedback, Mia or a reflection): on smaller screens the missions make room for it.
   const cardOpen = selectedTree !== null || openTeachSpot !== null || showExplanationModal || pendingReflection !== null;
 
@@ -126,6 +129,17 @@ export const HUD: React.FC = () => {
               <div className="text-[15px] font-black leading-tight tracking-tight">Mastery Grove</div>
               <div className="text-xs font-semibold text-ink-soft truncate max-w-[9.5rem] sm:max-w-xs">{world?.subject}</div>
             </div>
+            {room && (
+              <div
+                className="ml-1 flex items-center gap-1.5 rounded-full bg-leaf-soft px-2.5 py-1 text-xs font-extrabold text-leaf-deep"
+                data-testid="room-chip"
+                title={room.status === 'connected' ? 'Connected to your class' : 'Reconnecting…'}
+              >
+                <span className={`w-2 h-2 rounded-full ${room.status === 'connected' ? 'bg-leaf' : 'bg-sun animate-pulse'}`} />
+                <span className="tracking-widest">{room.code}</span>
+                <span className="hidden sm:inline font-bold text-ink-soft">· {classHere} here</span>
+              </div>
+            )}
           </div>
 
           {/* The grove you're in, and its trees as leaves */}
