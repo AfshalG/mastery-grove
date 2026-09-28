@@ -15,7 +15,7 @@ The rule we hold to: **Gemini generates, predicts and diagnoses. Code decides an
 ## Where it runs
 
 - **GitHub** ([AfshalG/mastery-grove](https://github.com/AfshalG/mastery-grove)) holds the source. Work moves from a feature branch to `development`, and only tested milestones go on to `main`.
-- **Google AI Studio** hosts it. The AI Studio app links to this repo, pulls `main`, and Publish deploys it to Cloud Run at mastery-grove.ai.studio. The hackathon build is kept as the tag `v1.0-hackathon`.
+- **Google AI Studio** hosts the hackathon build (tag `v1.0-hackathon`) on Cloud Run at mastery-grove.ai.studio. Version 2 isn't hosted: AI Studio would only sync this app to a new repo, so publishing v2 there was dropped after the finals.
 
 To stay compatible with AI Studio:
 - `server.ts` stays the entry point (`tsx server.ts`), and the npm script names don't change.

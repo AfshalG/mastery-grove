@@ -9,7 +9,7 @@ Steps run one at a time. Each step:
 
 Nothing touches the live hackathon app until after the finals.
 
-Status (28 Sep 2026): steps 0 to 11 are done and merged into `development`. Step 12: the feature-tour video (`bun run tour`, then `python3 tour/assemble.py`) and the README are done; merging to `main` and publishing in AI Studio wait for after the finals.
+Status (28 Sep 2026): all steps are done. Version 2 is merged into `main` and tagged `v2.0`. Publishing v2 in AI Studio was dropped after the finals, so mastery-grove.ai.studio still runs the hackathon build.
 
 New libraries: **Socket.IO** and **Vitest + Playwright** (both confirmed), and **Zod** for checking Gemini's JSON. Zod is proposed; v1 used it. Voice uses the browser's own MediaRecorder, so it adds no library.
 
