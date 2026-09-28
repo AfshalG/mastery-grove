@@ -4,7 +4,8 @@ import { useGameStore } from '../../store/useGameStore';
 import { sounds } from '../../utils/audio';
 import { approachPoint } from '../../game/layout';
 import { TreeData } from '../../types/game';
-import { Apple, ByteFace, Lantern, Leaf, PadArrow, Sprout, TrailMap } from './icons';
+import { miaStatus } from '../../game/teach';
+import { Apple, ByteFace, Lantern, Leaf, MiaFace, PadArrow, Sprout, TrailMap } from './icons';
 
 const isTouch = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches;
 
@@ -69,6 +70,9 @@ export const HUD: React.FC = () => {
     saplingNotice,
     teacherToast,
     setSaplingNotice,
+    teachSpots,
+    teachBacks,
+    walkToMia,
   } = useGameStore();
 
   // Start from the real setting, so the button can't drift out of sync after the HUD remounts.
@@ -241,6 +245,25 @@ export const HUD: React.FC = () => {
                           </button>
                         );
                       })}
+                    {teachSpots.some((t) => t.conceptId === concept.id) &&
+                      (() => {
+                        const mia = miaStatus(trees, concept.id, unlocked, teachBacks);
+                        const label =
+                          mia.kind === 'helped' ? 'Helped' : mia.kind === 'ready' ? 'Needs your help' : `Grow ${mia.kind === 'growing' ? mia.treesToGo : ''} more`;
+                        return (
+                          <button
+                            data-testid={`quest-mia-${concept.id}`}
+                            onClick={() => walkToMia(concept.id)}
+                            className={`w-full text-left rounded-xl px-2.5 py-2 border-2 transition-colors flex items-center gap-2 ${
+                              mia.kind === 'ready' ? 'bg-sun-soft border-sun' : 'bg-paper border-transparent hover:bg-paper-deep'
+                            }`}
+                          >
+                            <MiaFace size={18} mood={mia.kind === 'helped' ? 'happy' : 'puzzled'} className="shrink-0" />
+                            <span className="flex-1 min-w-0 truncate text-sm font-semibold">Explain it to Mia</span>
+                            <span className="shrink-0 text-[11px] font-bold text-ink-soft">{label}</span>
+                          </button>
+                        );
+                      })()}
                   </section>
                 ))}
             </div>

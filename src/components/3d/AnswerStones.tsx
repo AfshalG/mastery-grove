@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { useShallow } from 'zustand/react/shallow';
 import { useGameStore } from '../../store/useGameStore';
 import { liveAvatar } from '../../game/liveAvatar';
-import { startStones, stepStones, type StoneState } from '../../game/stones';
+import { STONES, startStones, stepStones, type StoneState } from '../../game/stones';
 import { FONT_3D } from './fonts';
 
 const LETTERS = 'ABCDEF';
@@ -99,7 +99,7 @@ export const AnswerStones: React.FC = () => {
               <meshLambertMaterial color={STONE} flatShading />
             </mesh>
             <mesh receiveShadow position={[0, 0.02, 0]}>
-              <cylinderGeometry args={[1.12, 1.16, 0.12, 9]} />
+              <cylinderGeometry args={[STONES.RADIUS - 0.04, STONES.RADIUS, 0.12, 9]} />
               <meshLambertMaterial color={STONE_EDGE} flatShading />
             </mesh>
             {/* Fills up while the kid stands here */}

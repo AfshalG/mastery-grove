@@ -111,7 +111,7 @@ flowchart TD
 // World (from Gemini or the sample)
 interface Concept       { id: string; name: string; questName: string; prerequisites: string[] }
 interface Misconception { id: string; conceptId: string; label: string }
-interface TeachSpot     { conceptId: string; puzzledThought: string; rubricPoints: string[] } // new in v2
+interface TeachSpot     { conceptId: string; misconceptionId?: string; puzzledThought: string; board?: string; rubricPoints: string[] } // new in v2
 interface Tree {
   id: string; conceptId: string; question: string; choices: string[]; answerIndex: number;
   explanation: string; citation: { page: number; quote: string } | null;
@@ -146,7 +146,7 @@ interface LearnerState {
   predictionStats: { exact: number; direction: number; miss: number };
   calibration: { calibrated: number; overconfident: number; underconfident: number };
   reflections: { conceptId: string; rating: 1 | 2 | 3 | 4; note: string; accuracy: number }[];
-  teachBacks: { conceptId: string; passed: boolean; hit: string[]; missing: string[] }[];
+  teachBacks: { conceptId: string; passed: boolean; hit: string[]; missing: string[]; words: string; spoken: boolean; session: number; at: number }[];
   xp: number;
 }
 
@@ -174,7 +174,9 @@ interface Room {
 | Saplings | At most 2 Made-for-you trees per missed tree per session. |
 | Calibration | One line after every answer compares confidence with the result. Very sure and wrong: "that's the moment to slow down and check". Not sure and right: "you knew more than you thought". |
 | Reflection feedback | Rating 3+ with accuracy below 70%: "You felt sure, but got X% right." Rating 2 or less with accuracy 70%+: "You know more than you think." |
-| Mia passes | Gemini marks which rubric points the explanation covered. Code passes it at two thirds of the points or more. |
+| Mia asks for help | Once her grove's health reaches 0.6 (the same point the next grove opens): explaining comes after practising. Before that she says how many more trees to grow. Once helped, she stays helped. |
+| Mia passes | Gemini marks which rubric points the explanation covered (and transcribes a voice note). Code passes it at two thirds of the points or more. A pass weakens the misconception Mia had in the kid's own model. |
+| Offline marking | Without Gemini, a typed explanation is marked by shared words: a point counts when the kid used at least half of its content words, and at least two of them. Kid words and textbook words count as one ("top" and "numerator"). A voice note needs Gemini. |
 
 ## Layout rules
 
@@ -186,6 +188,7 @@ Tree and sign overlaps were the most visible bug in the hackathon build, so layo
 4. Trees added during play take the first free spot on the grove's outer rings. Saplings and made-for-you trees go beside the tree they came from; memory trees go by the entrance.
 5. Positions are recomputed on every load. Saves never pin them.
 6. Flowers, mushrooms and rocks are scattered with a fixed seed. They stay off the trail, trees, signs and clearings.
+7. Mia sits at the heart of each grove. Base rings start at radius 6, so the answer stones for any tree (which rise between the kid and the centre) stay clear of her. The kid talks to her from in front and a little to her right, so the camera frames both.
 
 The invariants (tested for 1–12 groves and 1–15 trees per grove, plus 24 extra trees in one grove):
 - every pair of trees at least 3 apart
@@ -195,6 +198,7 @@ The invariants (tested for 1–12 groves and 1–15 trees per grove, plus 24 ext
 - grove clearings don't overlap
 - everything inside the walkable bounds
 - the same world always gives the same forest
+- no tree, answer stone or answering spot near Mia's teach spot
 
 ## Gemini calls
 
@@ -208,7 +212,7 @@ The invariants (tested for 1–12 groves and 1–15 trees per grove, plus 24 ext
 | `POST /api/generate-retention-check` | Memory Quest variants of due trees | Zod. The original question with its choices shuffled. |
 | `POST /api/deploy-teacher-quest` | A focus quest for one misconception | Zod. Reuse existing trees. |
 | `POST /api/generate-rundown` | What to reteach tomorrow | Zod. `buildPlainCodeRundown`. |
-| `POST /api/grade-teach-back` (new) | Mark the rubric points in the student's explanation (typed or spoken), and Mia's reply | Zod. Code decides pass. Offline: keyword match. |
+| `POST /api/grade-teach-back` | Mark the rubric points in the student's explanation (typed, or a voice note sent inline as WebM, M4A or OGG), transcribe the voice note, and write Mia's two possible replies | Input checked in `server/teachBack.ts`. Code decides the pass and picks the reply. Offline or on error: keyword marking for typed explanations. |
 
 Every call goes through one client: a model chain on 429 or 503, retries with backoff, a timeout that actually aborts, and a 10-minute cache. `GEMINI_MOCK=1` swaps in deterministic fixtures, for tests and offline demos.
 

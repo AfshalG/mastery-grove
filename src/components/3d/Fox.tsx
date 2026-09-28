@@ -3,6 +3,8 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { liveAvatar } from '../../game/liveAvatar';
 import { damp, turnToward } from '../../game/motion';
+import { teachSpotPlace } from '../../game/layout';
+import { useGameStore } from '../../store/useGameStore';
 
 const ORANGE = '#e36f1e';
 const CREAM = '#fff1dd';
@@ -22,9 +24,21 @@ export const Fox: React.FC = () => {
     const h = liveAvatar.heading;
     const fx = Math.sin(h);
     const fz = Math.cos(h);
-    // Beside the player and a little behind them.
-    const tx = liveAvatar.x + Math.cos(h) * 1.3 - fx * 0.6;
-    const tz = liveAvatar.z - Math.sin(h) * 1.3 - fz * 0.6;
+    // Beside the player and a little behind them, on whichever side isn't Mia's stump.
+    let tx = liveAvatar.x + Math.cos(h) * 1.3 - fx * 0.6;
+    let tz = liveAvatar.z - Math.sin(h) * 1.3 - fz * 0.6;
+    const { layout, teachSpots } = useGameStore.getState();
+    const onMia = (x: number, z: number) =>
+      teachSpots.some((s) => {
+        const g = layout?.groves.find((gr) => gr.conceptId === s.conceptId);
+        if (!g) return false;
+        const { mia } = teachSpotPlace(g);
+        return Math.hypot(mia.x - x, mia.z - z) < 1.5;
+      });
+    if (onMia(tx, tz)) {
+      tx = liveAvatar.x - Math.cos(h) * 1.3 - fx * 0.6;
+      tz = liveAvatar.z + Math.sin(h) * 1.3 - fz * 0.6;
+    }
 
     const px = pos.current.x;
     const pz = pos.current.z;

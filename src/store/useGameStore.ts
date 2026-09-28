@@ -15,10 +15,14 @@ import {
   WelcomeBackInfo,
   Reflection,
   ReflectionRating,
+  TeachBackRecord,
+  TeachBackResult,
+  TeachSpot,
 } from '../types/game';
 import { SAMPLE_WORLD } from '../data/sampleWorld';
 import { buildForest, isExtraTree, plantExtraTrees } from '../game/forest';
-import { approachPoint, clampToBounds, type ForestLayout, type Vec2 } from '../game/layout';
+import { approachPoint, clampToBounds, teachSpotPlace, type ForestLayout, type Vec2 } from '../game/layout';
+import { miaStatus, validTeachSpots } from '../game/teach';
 import { stoneSpots } from '../game/stones';
 import { sanitizeVisual } from '../game/visuals';
 import { computeTutorPick } from '../game/planner';
@@ -78,6 +82,23 @@ interface GameStore {
   /** Saves the kid's reflection and returns the feedback line, if their feeling and results disagree. */
   submitReflection: (rating: ReflectionRating, note: string) => string | null;
   dismissReflection: () => void;
+  // Mia's teach-back
+  /** The world's teach spots that are usable, at most one per grove. */
+  teachSpots: TeachSpot[];
+  teachBacks: TeachBackRecord[];
+  /** The grove whose Mia the kid is talking to; null when her card is closed. */
+  openTeachSpot: string | null;
+  targetSpotToOpen: string | null;
+  teachBackPending: boolean;
+  teachBackResult: TeachBackResult | null;
+  teachBackError: string | null;
+  /** Walks to Mia in that grove, and opens her card on arrival. */
+  walkToMia: (conceptId: string) => void;
+  openMia: (conceptId: string) => void;
+  closeMia: () => void;
+  /** Sends the kid's explanation (typed, or a voice note) to be marked, and records the try. */
+  submitTeachBack: (said: { text: string } | { audio: { base64: string; mimeType: string } }) => Promise<void>;
+
   /** The kid is standing on an answer stone before saying how sure they are. */
   confidenceNudge: boolean;
   setConfidenceNudge: (on: boolean) => void;
@@ -145,6 +166,8 @@ interface GameStore {
   getCurrentGroveProgress: () => { questName: string; current: number; total: number };
 }
 
+const MIA_NEEDS_HELP = 'Mia needs your help';
+
 /** Lets the correct-answer chime finish before a grove's unlock fanfare. */
 const UNLOCK_SOUND_DELAY_MS = 700;
 
@@ -166,6 +189,7 @@ const SAVED_FIELDS = [
   'cards',
   'reflections',
   'lastPlayedDay',
+  'teachBacks',
 ] as const;
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -227,6 +251,90 @@ export const useGameStore = create<GameStore>((set, get) => ({
     return feedback;
   },
   dismissReflection: () => set({ pendingReflection: null }),
+
+  teachSpots: [],
+  teachBacks: [],
+  openTeachSpot: null,
+  targetSpotToOpen: null,
+  teachBackPending: false,
+  teachBackResult: null,
+  teachBackError: null,
+  walkToMia: (conceptId) => {
+    const { layout, teachSpots } = get();
+    const grove = layout?.groves.find((g) => g.conceptId === conceptId);
+    if (!grove || !teachSpots.some((t) => t.conceptId === conceptId)) return;
+    const { stand } = teachSpotPlace(grove);
+    get().moveTo([stand.x, 0, stand.z]);
+    set({ targetSpotToOpen: conceptId, questListOpen: false });
+  },
+  openMia: (conceptId) => {
+    if (!get().teachSpots.some((t) => t.conceptId === conceptId)) return;
+    if (!get().getUnlockedConcepts().includes(conceptId)) {
+      get().setSaplingNotice('Mia is in a grove that opens later.');
+      return;
+    }
+    // One card at a time: talking to Mia puts any open question away.
+    if (get().selectedTree) get().closeTree();
+    // The kid found her, so the note saying where she is can go (on phones it would cover her).
+    const toast = get().teacherToast;
+    set({
+      openTeachSpot: conceptId,
+      teachBackResult: null,
+      teachBackError: null,
+      questListOpen: false,
+      teacherToast: toast?.startsWith(MIA_NEEDS_HELP) ? null : toast,
+    });
+  },
+  closeMia: () => set({ openTeachSpot: null, teachBackResult: null, teachBackError: null }),
+  submitTeachBack: async (said) => {
+    const { openTeachSpot: conceptId, teachSpots, world, teachBackPending } = get();
+    const spot = teachSpots.find((t) => t.conceptId === conceptId);
+    if (!conceptId || !spot || teachBackPending) return;
+    set({ teachBackPending: true, teachBackResult: null, teachBackError: null });
+
+    try {
+      const res = await fetch('/api/grade-teach-back', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conceptName: world?.concepts.find((c) => c.id === conceptId)?.name ?? '',
+          puzzledThought: spot.puzzledThought,
+          rubricPoints: spot.rubricPoints,
+          ...('text' in said ? { explanation: said.text } : { audio: said.audio }),
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data || typeof data.passed !== 'boolean') throw new Error(data?.error || 'Mia couldn’t follow that. Try again?');
+      const result = data as TeachBackResult;
+
+      const record: TeachBackRecord = {
+        conceptId,
+        passed: result.passed,
+        hit: result.hit,
+        missing: result.missing,
+        words: ('text' in said ? said.text : result.transcript ?? '').trim().slice(0, 1200),
+        spoken: !('text' in said),
+        session: get().session,
+        at: Date.now(),
+      };
+      const update: Partial<GameStore> = { teachBacks: [record, ...get().teachBacks].slice(0, 60), teachBackPending: false };
+      // The try is recorded even if the kid walked off; the card only shows it if it is still open on her.
+      if (get().openTeachSpot === conceptId) update.teachBackResult = result;
+
+      if (result.passed) {
+        // Explaining Mia's mix-up well is strong evidence the kid is past it too.
+        const strengths = { ...get().misconceptionStrength };
+        if (spot.misconceptionId) strengths[spot.misconceptionId] = weakenMisconception(strengths[spot.misconceptionId] ?? 0);
+        update.misconceptionStrength = strengths;
+        update.activeMisconceptionId = activeMisconception(strengths, get().overcomeMisconceptions);
+        update.soundTrigger = { type: 'unlock', time: Date.now() };
+      }
+      set(update);
+    } catch (error: any) {
+      set({ teachBackPending: false, teachBackError: error?.message || 'Mia couldn’t follow that. Try again?' });
+    }
+  },
+
   confidenceNudge: false,
   setConfidenceNudge: (on) => set({ confidenceNudge: on }),
   selectedConfidence: null,
@@ -285,6 +393,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     let initialSession = 1;
     let initialCards: Record<string, Card> = {};
     let initialReflections: Reflection[] = [];
+    let initialTeachBacks: TeachBackRecord[] = [];
     let initialDay: string | null = null;
 
     rawWorld.misconceptions.forEach((m) => {
@@ -303,6 +412,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       initialSession = Number(savedData.session) || 1;
       initialCards = savedData.cards || {};
       initialReflections = savedData.reflections || [];
+      initialTeachBacks = Array.isArray(savedData.teachBacks) ? savedData.teachBacks : [];
       initialDay = savedData.lastPlayedDay || null;
 
       if (Array.isArray(savedData.trees) && savedData.trees.length >= defaultTrees.length) {
@@ -377,6 +487,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
       cards: initialCards,
       reflections: initialReflections,
       pendingReflection: null,
+      teachSpots: validTeachSpots(rawWorld),
+      teachBacks: initialTeachBacks,
+      openTeachSpot: null,
+      targetSpotToOpen: null,
+      teachBackPending: false,
+      teachBackResult: null,
+      teachBackError: null,
       lastPlayedDay: initialDay ?? today(),
     });
 
@@ -400,15 +517,16 @@ export const useGameStore = create<GameStore>((set, get) => ({
     // Never aim outside the walkable area, or the avatar would try to walk off the map.
     const layout = get().layout;
     const p = layout ? clampToBounds(layout, { x: pos[0], z: pos[2] }) : { x: pos[0], z: pos[2] };
-    set({ targetPosition: [p.x, 0, p.z], targetTreeToOpen: treeIdToOpen || null });
+    set({ targetPosition: [p.x, 0, p.z], targetTreeToOpen: treeIdToOpen || null, targetSpotToOpen: null });
   },
   arriveAtTarget: () => {
-    const { targetTreeToOpen, trees } = get();
-    set({ targetPosition: null, targetTreeToOpen: null });
+    const { targetTreeToOpen, targetSpotToOpen, trees } = get();
+    set({ targetPosition: null, targetTreeToOpen: null, targetSpotToOpen: null });
     const tree = targetTreeToOpen ? trees.find((t) => t.id === targetTreeToOpen) : undefined;
     if (tree) get().openTree(tree);
+    else if (targetSpotToOpen) get().openMia(targetSpotToOpen);
   },
-  cancelWalk: () => set({ targetPosition: null, targetTreeToOpen: null }),
+  cancelWalk: () => set({ targetPosition: null, targetTreeToOpen: null, targetSpotToOpen: null }),
 
   openTree: (tree) => {
     const check = canOpenTree(tree, get().getUnlockedConcepts());
@@ -431,6 +549,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
       selectedTree: tree,
       answerStones: choicesHidden ? null : stonesFor(tree),
       choicesHidden,
+      openTeachSpot: null,
+      teachBackResult: null,
+      teachBackError: null,
       questListOpen: false, // the list is for finding trees; it would sit under the question card
       selectedConfidence: null,
       diagnosisResult: null,
@@ -687,6 +808,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     });
 
     const prevUnlocked = get().getUnlockedConcepts();
+    const treesBefore = get().trees;
 
     if (isCorrect) {
       const nextState: TreeState =
@@ -767,6 +889,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       // Check if memory sprouts can now be planted for newly completed groves
       get().checkAndPlantMemorySprouts();
       maybeAskForReflection(tree.conceptId);
+      maybeAnnounceMia(tree.conceptId, treesBefore);
       get().updateTutorBeacon();
       get().refreshPredictions();
     } else {
@@ -898,6 +1021,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     });
 
     const prevUnlocked = get().getUnlockedConcepts();
+    const treesBefore = get().trees;
 
     if (isCorrect) {
       const nextState: TreeState =
@@ -963,6 +1087,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
       get().checkAndPlantMemorySprouts();
       maybeAskForReflection(tree.conceptId);
+      maybeAnnounceMia(tree.conceptId, treesBefore);
       get().updateTutorBeacon();
       get().refreshPredictions();
     } else {
@@ -1412,19 +1537,31 @@ function applyDiagnosis(ctx: DiagnosisContext, diagnosis: DiagnosisResponse) {
 
 // Save the learner's progress a moment after any of it changes, so nothing is lost between answers.
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
+let unsaved = false;
+function saveProgress() {
+  clearTimeout(saveTimer);
+  const now = useGameStore.getState();
+  if (!unsaved || !now.world) return;
+  unsaved = false;
+  try {
+    localStorage.setItem(getStorageKey(now.world), JSON.stringify(Object.fromEntries(SAVED_FIELDS.map((k) => [k, now[k]]))));
+  } catch (e) {
+    console.warn('Could not save progress:', e);
+  }
+}
 useGameStore.subscribe((state, prev) => {
   if (!state.world || !SAVED_FIELDS.some((k) => state[k] !== prev[k])) return;
+  unsaved = true;
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    const now = useGameStore.getState();
-    if (!now.world) return;
-    try {
-      localStorage.setItem(getStorageKey(now.world), JSON.stringify(Object.fromEntries(SAVED_FIELDS.map((k) => [k, now[k]]))));
-    } catch (e) {
-      console.warn('Could not save progress:', e);
-    }
-  }, 300);
+  saveTimer = setTimeout(saveProgress, 300);
 });
+// Closing or hiding the tab saves at once: the last answer (or Mia's thanks) shouldn't wait on the timer.
+if (typeof window !== 'undefined') {
+  window.addEventListener('pagehide', saveProgress);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') saveProgress();
+  });
+}
 
 /** The answer stones for a multiple-choice tree: a row between the kid's spot and the tree (none for serve-the-cake). */
 function stonesFor(tree: TreeData): Vec2[] | null {
@@ -1449,4 +1586,17 @@ function maybeAskForReflection(conceptId: string) {
   const s = useGameStore.getState();
   const done = s.reflections.some((r) => r.conceptId === conceptId && r.session === s.session);
   if (!done && isGroveComplete(s.trees, conceptId)) useGameStore.setState({ pendingReflection: conceptId });
+}
+
+/** The moment a grove is grown enough for Mia to ask for help, say where she is (once). */
+function maybeAnnounceMia(conceptId: string, treesBefore: TreeData[]) {
+  const s = useGameStore.getState();
+  if (!s.teachSpots.some((t) => t.conceptId === conceptId)) return;
+  const unlocked = s.getUnlockedConcepts();
+  const before = miaStatus(treesBefore, conceptId, unlocked, s.teachBacks).kind;
+  const now = miaStatus(s.trees, conceptId, unlocked, s.teachBacks).kind;
+  if (before === 'growing' && now === 'ready') {
+    const grove = s.world?.concepts.find((c) => c.id === conceptId)?.questName ?? 'this grove';
+    flashToast(`${MIA_NEEDS_HELP} in ${grove}. She’s sitting in the middle of the grove.`);
+  }
 }

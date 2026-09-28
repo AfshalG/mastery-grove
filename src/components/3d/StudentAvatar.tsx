@@ -141,6 +141,12 @@ export const StudentAvatar: React.FC = () => {
       }
     }
 
+    // Talking to Mia: turn to face her.
+    if (!moving && store.openTeachSpot && store.layout) {
+      const g = store.layout.groves.find((gr) => gr.conceptId === store.openTeachSpot);
+      if (g) heading.current = turnToward(heading.current, Math.atan2(g.centre.x - liveAvatar.x, g.centre.z - liveAvatar.z), turnShare);
+    }
+
     // The store hears where we are a few times a second while walking, and once more when we stop.
     const now = state.clock.elapsedTime;
     if ((moving && now - lastPublish.current > PUBLISH_EVERY) || (!moving && wasMoving.current)) {

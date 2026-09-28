@@ -15,6 +15,8 @@ export const STONES = {
   FROM_TREE: 3.2,
   /** Closest a stone may sit to any tree. */
   TREE_CLEARANCE: 1.6,
+  /** The drawn stone's outer radius, rim included. */
+  RADIUS: 1.16,
 };
 
 /**
