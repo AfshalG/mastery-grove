@@ -16,6 +16,8 @@ export interface ServeConfig {
   targetNumerator: number;
   targetDenominator: number;
   totalSlices: number; // N, multiple of denominator
+  /** What gets shared out: slices of a cake (the default), or planks laid on a bridge. */
+  whole?: 'cake' | 'bridge';
 }
 
 export interface TreeData {
