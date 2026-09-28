@@ -17,6 +17,8 @@ import { BackgroundForest } from './BackgroundForest';
 import { Fox } from './Fox';
 import { ProfessorByte } from './ProfessorByte';
 import { MiaSpots } from './Mia';
+import { Streams } from './Streams';
+import { ObjectiveBeacon } from './ObjectiveBeacon';
 
 /**
  * The sun rides along with the player, so every grove gets shadows however long the trail is
@@ -87,6 +89,9 @@ export const ForestScene: React.FC = () => {
           {/* Ground Terrain & Paths */}
           <ForestTerrain />
           <BackgroundForest />
+          {/* Streams between groves, bridged as the kid learns */}
+          <Streams />
+          <ObjectiveBeacon />
 
           {/* Student Avatar and the fox */}
           <StudentAvatar />

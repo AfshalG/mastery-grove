@@ -22,6 +22,13 @@ export interface Skin {
   withered: string;
   blossom: string;
   flowers: string[];
+  /** Streams between groves: shallow water at the edges, deeper in the middle, and the sandy banks. */
+  water: string;
+  waterDeep: string;
+  bank: string;
+  /** Bridge planks and rails. */
+  wood: string;
+  woodDark: string;
 }
 
 export const MEADOW: Skin = {
@@ -45,6 +52,11 @@ export const MEADOW: Skin = {
   withered: '#a08c68',
   blossom: '#fbe3ea',
   flowers: ['#f2a7b8', '#f6d57a', '#b9a2e0', '#fffaf0', '#f4a261'],
+  water: '#8fd0d8',
+  waterDeep: '#5fb0c2',
+  bank: '#d9c99a',
+  wood: '#c79a62',
+  woodDark: '#8a6440',
 };
 
 export const AUTUMN: Skin = {
@@ -68,6 +80,11 @@ export const AUTUMN: Skin = {
   withered: '#8f7456',
   blossom: '#fff1c9',
   flowers: ['#e76f51', '#f4a261', '#e9c46a', '#fffaf0', '#c9744d'],
+  water: '#9cc9c9',
+  waterDeep: '#6aa3a8',
+  bank: '#d8c08c',
+  wood: '#b07b45',
+  woodDark: '#7a5230',
 };
 
 /** Reading and language worlds get the autumn wood; everything else gets the spring meadow. */

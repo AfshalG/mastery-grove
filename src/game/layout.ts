@@ -25,8 +25,20 @@ export interface GroveSpot {
   signRotationY: number;
 }
 
+/** Water between two groves. Its bridge carries the trail across once the next grove opens. */
+export interface Stream {
+  /** The grove just past the water. */
+  beforeGrove: number;
+  z: number;
+  halfWidth: number;
+  /** The bridge runs along z, centred on the stream where the trail crosses it. */
+  bridge: { x: number; halfLength: number; halfWidth: number };
+}
+
 export interface ForestLayout {
   groves: GroveSpot[];
+  /** One stream between each pair of groves, in trail order. */
+  streams: Stream[];
   /** Trail centreline, sampled about every half unit. */
   trail: Vec2[];
   spawn: Vec2;
@@ -78,6 +90,18 @@ export const LAYOUT = {
   TRAIL_START_Z: 12,
   TRAIL_END_BEYOND: 18,
   SPAWN: { x: 0, z: 4 } as Vec2,
+  /** Half the width of the stream between two groves, and the meadow kept between it and each clearing. */
+  STREAM_HALF_WIDTH: 1.6,
+  STREAM_MARGIN: 2.5,
+  /** Closest a question tree may stand to the water. */
+  TREE_CLEAR_OF_WATER: 1.5,
+  /** The bridge lands a metre onto each bank; the deck arches up to BRIDGE_ARCH above BRIDGE_DECK_Y. */
+  BRIDGE_HALF_LENGTH: 2.8,
+  BRIDGE_HALF_WIDTH: 1.45,
+  BRIDGE_DECK_Y: 0.16,
+  BRIDGE_ARCH: 0.5,
+  /** The kid's body, for keeping them out of the water. */
+  BODY_RADIUS: 0.35,
 } as const;
 
 const ARC = 2 * Math.PI - 2 * LAYOUT.ENTRANCE_GAP;
@@ -137,24 +161,29 @@ export function signBoard(g: GroveSpot): [Vec2, Vec2] {
 
 /** Lays out one grove per concept, in order, alternating sides of a winding trail. */
 export function planForest(concepts: Array<{ id: string; trees: number }>): ForestLayout {
-  const groves: GroveSpot[] = concepts.map((c, index) => {
+  const groves: GroveSpot[] = [];
+  concepts.forEach((c, index) => {
     const side: 1 | -1 = index % 2 === 0 ? 1 : -1;
     const ringRadius = ringRadiusFor(c.trees);
-    const centre = { x: side * (LAYOUT.TRAIL_TO_RING + ringRadius), z: LAYOUT.GROVE_Z_START - index * LAYOUT.GROVE_Z_STEP };
+    const clearingRadius = ringRadius + LAYOUT.CLEARING_MARGIN;
+    // Far enough past the last grove for a stream, with meadow either side of it, between the two clearings.
+    const prev = groves[index - 1];
+    const gap = prev ? prev.clearingRadius + clearingRadius + 2 * (LAYOUT.STREAM_HALF_WIDTH + LAYOUT.STREAM_MARGIN) : 0;
+    const z = prev ? prev.centre.z - Math.max(LAYOUT.GROVE_Z_STEP, gap) : LAYOUT.GROVE_Z_START;
+    const centre = { x: side * (LAYOUT.TRAIL_TO_RING + ringRadius), z };
     const entranceAngle = side === 1 ? Math.PI : 0;
-    // Face the player walking up the trail (the camera looks toward -z), turned a little toward the trail.
-    const signRotationY = -side * LAYOUT.SIGN_TURN;
-    return {
+    groves.push({
       conceptId: c.id,
       index,
       side,
       centre,
       ringRadius,
-      clearingRadius: ringRadius + LAYOUT.CLEARING_MARGIN,
+      clearingRadius,
       entranceAngle,
       sign: onCircle(centre, ringRadius + LAYOUT.SIGN_OUTSIDE_RING, entranceAngle),
-      signRotationY,
-    };
+      // Face the player walking up the trail (the camera looks toward -z), turned a little toward the trail.
+      signRotationY: -side * LAYOUT.SIGN_TURN,
+    });
   });
 
   const lastZ = groves.length ? groves[groves.length - 1].centre.z : LAYOUT.GROVE_Z_START;
@@ -175,8 +204,32 @@ export function planForest(concepts: Array<{ id: string; trees: number }>): Fore
     maxZ: Math.max(...zs) + LAYOUT.EDGE_MARGIN,
   };
 
-  return { groves, trail, spawn: { ...LAYOUT.SPAWN }, bounds };
+  // A stream halfway between each pair of clearings, bridged where the trail crosses it.
+  const streams: Stream[] = groves.slice(1).map((g, k) => {
+    const prev = groves[k];
+    const z = (prev.centre.z - prev.clearingRadius + g.centre.z + g.clearingRadius) / 2;
+    return {
+      beforeGrove: g.index,
+      z,
+      halfWidth: LAYOUT.STREAM_HALF_WIDTH,
+      bridge: { x: trailXAt(trail, z), halfLength: LAYOUT.BRIDGE_HALF_LENGTH, halfWidth: LAYOUT.BRIDGE_HALF_WIDTH },
+    };
+  });
+
+  return { groves, streams, trail, spawn: { ...LAYOUT.SPAWN }, bounds };
 }
+
+/** Where the trail is at a given z (it runs up the map, so it passes each z once). */
+function trailXAt(trail: Vec2[], z: number) {
+  for (let i = 0; i < trail.length - 1; i++) {
+    const a = trail[i];
+    const b = trail[i + 1];
+    if ((a.z - z) * (b.z - z) <= 0 && a.z !== b.z) return a.x + ((z - a.z) / (b.z - a.z)) * (b.x - a.x);
+  }
+  return 0;
+}
+
+const inWater = (layout: ForestLayout, p: Vec2, clearance: number) => layout.streams.some((s) => Math.abs(p.z - s.z) < s.halfWidth + clearance);
 
 export function distanceToTrail(layout: ForestLayout, p: Vec2) {
   let best = Infinity;
@@ -205,6 +258,7 @@ function isFree(layout: ForestLayout, groveIndex: number, p: Vec2, occupied: Vec
   if (p.x <= b.minX + 1 || p.x >= b.maxX - 1 || p.z <= b.minZ + 1 || p.z >= b.maxZ - 1) return false;
   if (distanceToTrail(layout, p) < LAYOUT.TRAIL_GAP) return false;
   if (dist(p, layout.spawn) < LAYOUT.TREE_GAP) return false;
+  if (inWater(layout, p, LAYOUT.TREE_CLEAR_OF_WATER)) return false;
   for (const g of layout.groves) {
     const [a, c] = signBoard(g);
     if (distToSegment(p, a, c) < LAYOUT.SIGN_GAP) return false;
@@ -292,6 +346,75 @@ export function teachSpotPlace(g: GroveSpot): { mia: Vec2; stand: Vec2 } {
   };
 }
 
+/**
+ * Water stops the kid at the bank; the only way across is a bridge that's open (its grove, or a later one, is
+ * unlocked). A kid already on a bridge can't step off its side. Returns where they end up, and which stream
+ * stopped them, if one did.
+ */
+export function blockWater(layout: ForestLayout, open: boolean[], from: Vec2, to: Vec2): { p: Vec2; blockedBy: number | null } {
+  let p = { ...to };
+  let blockedBy: number | null = null;
+  layout.streams.forEach((s, i) => {
+    const reach = s.halfWidth + LAYOUT.BODY_RADIUS;
+    if (Math.abs(p.z - s.z) >= reach) return;
+    const b = s.bridge;
+    const lane = b.halfWidth - LAYOUT.BODY_RADIUS;
+    if (open[i] && Math.abs(p.x - b.x) <= lane) return; // on the bridge
+    if (open[i] && Math.abs(from.z - s.z) < reach && Math.abs(from.x - b.x) <= lane + 1e-9) {
+      p = { x: Math.min(b.x + lane, Math.max(b.x - lane, p.x)), z: p.z }; // stay on the deck
+      return;
+    }
+    p = { x: p.x, z: from.z >= s.z ? s.z + reach : s.z - reach };
+    blockedBy = i;
+  });
+  return { p, blockedBy };
+}
+
+/**
+ * The walk for a click: straight there, except that each stream in the way is crossed by its bridge. If a
+ * bridge isn't open yet, the walk ends at its near end and `blockedAt` says which stream stopped it.
+ */
+export function routeTo(layout: ForestLayout, open: boolean[], from: Vec2, to: Vec2): { path: Vec2[]; blockedAt: number | null } {
+  const path: Vec2[] = [];
+  const crossing = layout.streams
+    .map((s, i) => ({ s, i }))
+    .filter(({ s }) => (from.z - s.z) * (to.z - s.z) < 0)
+    .sort((a, b) => Math.abs(from.z - a.s.z) - Math.abs(from.z - b.s.z));
+
+  for (const { s, i } of crossing) {
+    const side = from.z > s.z ? 1 : -1;
+    const step = s.bridge.halfLength + 0.4;
+    const near = { x: s.bridge.x, z: s.z + side * step };
+    const far = { x: s.bridge.x, z: s.z - side * step };
+    const onDeck = Math.abs(from.z - s.z) <= s.bridge.halfLength && Math.abs(from.x - s.bridge.x) <= s.bridge.halfWidth;
+    if (!open[i]) {
+      path.push(near);
+      return { path, blockedAt: i };
+    }
+    if (!onDeck) path.push(near);
+    path.push(far);
+  }
+  path.push(to);
+  return { path, blockedAt: null };
+}
+
+/** How high the ground is here: 0, or the deck of a bridge, which arches up over the middle of the stream. */
+export function groundHeight(layout: ForestLayout, p: Vec2): number {
+  for (const s of layout.streams) {
+    const b = s.bridge;
+    const along = p.z - s.z;
+    if (Math.abs(along) <= b.halfLength && Math.abs(p.x - b.x) <= b.halfWidth + 0.2) {
+      return LAYOUT.BRIDGE_DECK_Y + LAYOUT.BRIDGE_ARCH * Math.cos((along / b.halfLength) * (Math.PI / 2));
+    }
+  }
+  return 0;
+}
+
+/** Where the kid steps into a grove from the trail: in the gap its ring leaves for the trail, inside the trees. */
+export function groveEntrance(g: GroveSpot): Vec2 {
+  return onCircle(g.centre, g.ringRadius - 1, g.entranceAngle);
+}
+
 /** Keeps a point inside the walkable area. */
 export function clampToBounds(layout: ForestLayout, p: Vec2): Vec2 {
   const b = layout.bounds;
@@ -344,6 +467,7 @@ export function scatterDecorations(layout: ForestLayout, trees: Vec2[], seed = 1
       p.x > b.minX + 1 && p.x < b.maxX - 1 && p.z > b.minZ + 1 && p.z < b.maxZ - 1 &&
       distanceToTrail(layout, p) > LAYOUT.TRAIL_HALF_WIDTH + 0.4 &&
       dist(p, layout.spawn) > 1.5 &&
+      !inWater(layout, p, 0.8) &&
       trees.every((t) => dist(p, t) > 1.6) &&
       layout.groves.every((g) => {
         const [e1, e2] = signBoard(g);
@@ -381,6 +505,7 @@ export function scatterForest(layout: ForestLayout, trees: Vec2[], seed = 4242):
   const isClear = (p: Vec2) =>
     distanceToTrail(layout, p) > LAYOUT.TRAIL_HALF_WIDTH + 2.5 &&
     dist(p, layout.spawn) > 5 &&
+    !inWater(layout, p, 2.2) &&
     trees.every((t) => dist(p, t) > LAYOUT.TREE_GAP) &&
     layout.groves.every((g) => {
       const [e1, e2] = signBoard(g);

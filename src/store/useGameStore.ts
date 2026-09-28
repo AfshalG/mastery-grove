@@ -21,7 +21,9 @@ import {
 } from '../types/game';
 import { SAMPLE_WORLD } from '../data/sampleWorld';
 import { buildForest, isExtraTree, plantExtraTrees } from '../game/forest';
-import { approachPoint, clampToBounds, teachSpotPlace, type ForestLayout, type Vec2 } from '../game/layout';
+import { approachPoint, clampToBounds, routeTo, teachSpotPlace, type ForestLayout, type Vec2 } from '../game/layout';
+import { bridgeTreesToGo, openBridges, planMissions, type MissionPlan, type Objective } from '../game/missions';
+import { liveAvatar } from '../game/liveAvatar';
 import { miaStatus, validTeachSpots } from '../game/teach';
 import { stoneSpots } from '../game/stones';
 import { sanitizeVisual } from '../game/visuals';
@@ -60,7 +62,21 @@ interface GameStore {
   // Avatar & Controls
   avatarPosition: [number, number, number];
   targetPosition: [number, number, number] | null;
+  /** The rest of a click-to-walk after targetPosition: over bridges, then to the spot clicked. */
+  waypoints: [number, number, number][];
   targetTreeToOpen: string | null;
+  /** Groves the kid has walked into (crossing into the next grove is a mission). */
+  visitedGroves: string[];
+  /**
+   * Groves that have opened. Once open, a grove stays open: a memory check answered wrong wilts a tree, but it
+   * never locks a grove (or breaks a bridge) the kid has already reached.
+   */
+  openedGroves: string[];
+  /** The grove being worked on, its missions, and the next one: where Byte's beam points. */
+  missionPlan: MissionPlan | null;
+  objective: Objective | null;
+  /** Why the kid can't cross a stream yet, for the note when they walk into the water or click past it. */
+  bridgeNotice: (streamIndex: number) => string;
 
   // UI & Modals
   selectedTree: TreeData | null;
@@ -139,7 +155,8 @@ interface GameStore {
   loadSampleWorld: () => void;
   setScreen: (screen: 'start' | 'game' | 'teacher') => void;
   setAvatarPosition: (pos: [number, number, number]) => void;
-  moveTo: (pos: [number, number, number], treeIdToOpen?: string) => void;
+  /** Walks there (over bridges). Returns false when an unfinished bridge stops the walk short. */
+  moveTo: (pos: [number, number, number], treeIdToOpen?: string) => boolean;
   /** The avatar reached its walk target: clear it, and open the tree it was walking to, if any. */
   arriveAtTarget: () => void;
   /** Drop the walk target (the player took over with the keys). */
@@ -190,6 +207,8 @@ const SAVED_FIELDS = [
   'reflections',
   'lastPlayedDay',
   'teachBacks',
+  'visitedGroves',
+  'openedGroves',
 ] as const;
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -216,7 +235,24 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   avatarPosition: [0, 0, 2],
   targetPosition: null,
+  waypoints: [],
   targetTreeToOpen: null,
+  visitedGroves: [],
+  openedGroves: [],
+  missionPlan: null,
+  objective: null,
+  bridgeNotice: (streamIndex) => {
+    const { world, layout, trees } = get();
+    const stream = layout?.streams[streamIndex];
+    if (!world || !layout || !stream) return 'The bridge isn’t finished yet.';
+    const past = world.concepts.find((c) => c.id === layout.groves[stream.beforeGrove]?.conceptId);
+    const toGo = bridgeTreesToGo(world, layout, trees, get().getUnlockedConcepts(), streamIndex);
+    const builder = past?.prerequisites.length === 1 ? world.concepts.find((c) => c.id === past.prerequisites[0]) : undefined;
+    const where = builder ? ` in ${builder.questName}` : '';
+    return toGo > 0
+      ? `The bridge to ${past?.questName ?? 'the next grove'} isn’t finished. Grow ${toGo} more tree${toGo > 1 ? 's' : ''}${where} to build it.`
+      : 'The bridge isn’t finished yet.';
+  },
 
   selectedTree: null,
   answerStones: null,
@@ -264,8 +300,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const grove = layout?.groves.find((g) => g.conceptId === conceptId);
     if (!grove || !teachSpots.some((t) => t.conceptId === conceptId)) return;
     const { stand } = teachSpotPlace(grove);
-    get().moveTo([stand.x, 0, stand.z]);
-    set({ targetSpotToOpen: conceptId, questListOpen: false });
+    const reaches = get().moveTo([stand.x, 0, stand.z]);
+    set({ targetSpotToOpen: reaches ? conceptId : null, questListOpen: false });
   },
   openMia: (conceptId) => {
     if (!get().teachSpots.some((t) => t.conceptId === conceptId)) return;
@@ -330,6 +366,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         update.soundTrigger = { type: 'unlock', time: Date.now() };
       }
       set(update);
+      if (result.passed) get().updateTutorBeacon();
     } catch (error: any) {
       set({ teachBackPending: false, teachBackError: error?.message || 'Mia couldn’t follow that. Try again?' });
     }
@@ -394,6 +431,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
     let initialCards: Record<string, Card> = {};
     let initialReflections: Reflection[] = [];
     let initialTeachBacks: TeachBackRecord[] = [];
+    let initialVisited: string[] = [];
+    let initialOpened: string[] = [];
     let initialDay: string | null = null;
 
     rawWorld.misconceptions.forEach((m) => {
@@ -413,6 +452,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
       initialCards = savedData.cards || {};
       initialReflections = savedData.reflections || [];
       initialTeachBacks = Array.isArray(savedData.teachBacks) ? savedData.teachBacks : [];
+      initialVisited = Array.isArray(savedData.visitedGroves) ? savedData.visitedGroves : [];
+      initialOpened = Array.isArray(savedData.openedGroves) ? savedData.openedGroves : [];
       initialDay = savedData.lastPlayedDay || null;
 
       if (Array.isArray(savedData.trees) && savedData.trees.length >= defaultTrees.length) {
@@ -447,15 +488,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
       };
     }
 
-    const initialUnlocked = unlockedConcepts(rawWorld, initialTrees);
-    const initialPick = computeTutorPick(
-      initialTrees,
-      initialUnlocked,
-      initialPredictions,
-      initialActiveMis,
-      rawWorld.misconceptions
-    );
-
     set({
       world: rawWorld,
       layout,
@@ -463,10 +495,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
       screen: 'game',
       avatarPosition: [layout.spawn.x, 0, layout.spawn.z],
       targetPosition: null,
+      waypoints: [],
       targetTreeToOpen: null,
+      visitedGroves: initialVisited,
+      openedGroves: initialOpened,
       selectedTree: null,
-      tutorBeaconTreeId: initialPick.beaconId,
-      tutorBeaconReason: initialPick.reason,
       questListOpen: false,
       diagnosisResult: null,
       diagnosisError: null,
@@ -496,6 +529,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
       teachBackError: null,
       lastPlayedDay: initialDay ?? today(),
     });
+    // Missions and the beam (Byte's pick is one input to them).
+    get().updateTutorBeacon();
 
     // Coming back on a new day starts a new session, and its Memory Quest.
     if (initialDay && initialDay !== today() && Object.keys(initialCards).length > 0) get().startNextSession();
@@ -512,21 +547,44 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   setScreen: (screen) => set({ screen }),
-  setAvatarPosition: (pos) => set({ avatarPosition: pos }),
+  setAvatarPosition: (pos) => {
+    set({ avatarPosition: pos });
+    // Walking into a grove for the first time counts (crossing into it is a mission).
+    const { layout, visitedGroves } = get();
+    const inside = layout?.groves.find((g) => Math.hypot(pos[0] - g.centre.x, pos[2] - g.centre.z) < g.clearingRadius);
+    if (inside && !visitedGroves.includes(inside.conceptId)) {
+      set({ visitedGroves: [...visitedGroves, inside.conceptId] });
+      get().updateTutorBeacon();
+    }
+  },
   moveTo: (pos, treeIdToOpen) => {
     // Never aim outside the walkable area, or the avatar would try to walk off the map.
     const layout = get().layout;
     const p = layout ? clampToBounds(layout, { x: pos[0], z: pos[2] }) : { x: pos[0], z: pos[2] };
-    set({ targetPosition: [p.x, 0, p.z], targetTreeToOpen: treeIdToOpen || null, targetSpotToOpen: null });
+    if (!layout) {
+      set({ targetPosition: [p.x, 0, p.z], waypoints: [], targetTreeToOpen: treeIdToOpen || null, targetSpotToOpen: null });
+      return true;
+    }
+    // Water is crossed by bridges; an unfinished one ends the walk at its near end.
+    const { path, blockedAt } = routeTo(layout, openBridges(layout, get().getUnlockedConcepts()), { x: liveAvatar.x, z: liveAvatar.z }, p);
+    const [first, ...rest] = path.map((q): [number, number, number] => [q.x, 0, q.z]);
+    set({ targetPosition: first, waypoints: rest, targetTreeToOpen: blockedAt === null ? treeIdToOpen || null : null, targetSpotToOpen: null });
+    if (blockedAt !== null) get().setSaplingNotice(get().bridgeNotice(blockedAt));
+    return blockedAt === null;
   },
   arriveAtTarget: () => {
-    const { targetTreeToOpen, targetSpotToOpen, trees } = get();
+    const { targetTreeToOpen, targetSpotToOpen, trees, waypoints } = get();
+    // Partway along a walk (say, at the end of a bridge): on to the next point.
+    if (waypoints.length > 0) {
+      set({ targetPosition: waypoints[0], waypoints: waypoints.slice(1) });
+      return;
+    }
     set({ targetPosition: null, targetTreeToOpen: null, targetSpotToOpen: null });
     const tree = targetTreeToOpen ? trees.find((t) => t.id === targetTreeToOpen) : undefined;
     if (tree) get().openTree(tree);
     else if (targetSpotToOpen) get().openMia(targetSpotToOpen);
   },
-  cancelWalk: () => set({ targetPosition: null, targetTreeToOpen: null, targetSpotToOpen: null }),
+  cancelWalk: () => set({ targetPosition: null, waypoints: [], targetTreeToOpen: null, targetSpotToOpen: null }),
 
   openTree: (tree) => {
     const check = canOpenTree(tree, get().getUnlockedConcepts());
@@ -590,13 +648,23 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   updateTutorBeacon: () => {
-    const { trees, predictions, activeMisconceptionId, world } = get();
+    const { trees, predictions, activeMisconceptionId, world, layout, teachSpots, teachBacks, visitedGroves, openedGroves } = get();
     if (!world) return;
     const unlocked = get().getUnlockedConcepts();
+    // Remember every grove that has opened, so it stays open.
+    if (unlocked.some((id) => !openedGroves.includes(id))) set({ openedGroves: unlocked });
     const pick = computeTutorPick(trees, unlocked, predictions, activeMisconceptionId, world.misconceptions);
+    // The beam follows the next mission: a tree (Byte's pick when it's in this grove), Mia, or the next grove.
+    const plan = layout
+      ? planMissions({ world, layout, trees, unlocked, teachSpots, teachBacks, visited: visitedGroves, pickTreeId: pick.beaconId })
+      : null;
+    const objective = plan ? plan.next?.objective ?? null : pick.beaconId ? ({ kind: 'tree', treeId: pick.beaconId } as Objective) : null;
+    const treeId = objective?.kind === 'tree' ? objective.treeId : null;
     set({
-      tutorBeaconTreeId: pick.beaconId,
-      tutorBeaconReason: pick.reason,
+      tutorBeaconTreeId: treeId,
+      tutorBeaconReason: treeId === null ? null : treeId === pick.beaconId ? pick.reason : plan?.next?.kind === 'memory' ? 'Do you still remember this one?' : 'next on your mission',
+      missionPlan: plan,
+      objective,
     });
   },
 
@@ -669,8 +737,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   getUnlockedConcepts: () => {
-    const { world, trees } = get();
-    return world ? unlockedConcepts(world, trees) : [];
+    const { world, trees, openedGroves } = get();
+    if (!world) return [];
+    const now = unlockedConcepts(world, trees);
+    return world.concepts.map((c) => c.id).filter((id) => now.includes(id) || openedGroves.includes(id));
   },
 
   getCurrentGroveProgress: () => {
