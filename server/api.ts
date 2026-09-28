@@ -51,6 +51,7 @@ WORLD SPECIFICATION:
      * visual: { "kind": "cake", "parts": 6, "shaded": 4 }
      * choices: []
      * answerIndex: 4
+   - In the grove about comparing (or any grove), the hands-on tree may be a bridge instead of a cake: set serveConfig.whole to "bridge", use a "bar" visual, and ask it as laying planks (e.g. "Lay 3/4 of the planks on the bridge." with 8 planks).
 5. Citations:
    - If worksheet text or an uploaded worksheet file is provided, every question MUST be derived from or directly present in that worksheet, and "citation" must include { "page": <page number (1-indexed)>, "quote": "<exact line or phrase from worksheet>" }.
    - If only a topic was provided without worksheet text or file, set "citation" to null.
@@ -172,6 +173,7 @@ WORLD SPECIFICATION:
                         targetNumerator: { type: Type.INTEGER },
                         targetDenominator: { type: Type.INTEGER },
                         totalSlices: { type: Type.INTEGER },
+                        whole: { type: Type.STRING, description: "'cake' (default) or 'bridge'" },
                       },
                     },
                     citation: {

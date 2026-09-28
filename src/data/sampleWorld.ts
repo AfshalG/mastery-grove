@@ -250,26 +250,27 @@ export const SAMPLE_WORLD: WorldData = {
       citation: null,
       state: 'unanswered',
     },
-    // Grove 2 Hands-On Serve Question
+    // Grove 2 hands-on challenge: build the bridge (the same maths as serving a cake, on planks)
     {
       id: 't2_serve',
       conceptId: 'c2',
-      question: 'Serve 3/4 of the cake.',
+      question: 'Lay 3/4 of the planks on the bridge.',
       kind: 'serve',
       serveConfig: {
         targetNumerator: 3,
         targetDenominator: 4,
         totalSlices: 8,
+        whole: 'bridge',
       },
       visual: {
-        kind: 'cake',
+        kind: 'bar',
         parts: 8,
         shaded: 6,
       },
       choices: [],
       answerIndex: 6,
       explanation:
-        'The cake has 8 slices. To serve 3/4 of it, convert 3/4 to eighths: (3×2)/(4×2) = 6/8. You need to serve 6 slices!',
+        'The bridge has 8 planks in 4 equal groups of 2. Three of those groups is 6 planks, so 3/4 of the bridge is 6 planks.',
       citation: null,
       state: 'unanswered',
     },

@@ -25,6 +25,7 @@ import { approachPoint, clampToBounds, routeTo, teachSpotPlace, type ForestLayou
 import { bridgeTreesToGo, openBridges, planMissions, type MissionPlan, type Objective } from '../game/missions';
 import { liveAvatar } from '../game/liveAvatar';
 import { miaStatus, validTeachSpots } from '../game/teach';
+import { diagnoseServe } from '../game/serve';
 import { stoneSpots } from '../game/stones';
 import { sanitizeVisual } from '../game/visuals';
 import { computeTutorPick } from '../game/planner';
@@ -46,6 +47,8 @@ import {
 interface LastAnswerInfo {
   isCorrect: boolean;
   tree: TreeData;
+  /** For a hands-on serve: how many slices (or planks) the kid served. */
+  served?: number;
   chosenChoice: string;
   confidence: ConfidenceLevel;
   prediction: TreePrediction | null;
@@ -84,6 +87,9 @@ interface GameStore {
   answerStones: Vec2[] | null;
   /** A memory-check question keeps its choices hidden until the kid has an answer in mind (retrieval practice). */
   choicesHidden: boolean;
+  /** Slices (or planks) picked so far in a hands-on serve, shared by the 3D cake and the card. */
+  servedSlices: number[];
+  toggleServeSlice: (index: number) => void;
   revealChoices: () => void;
 
   // Retention: sessions, Leitner cards, the Memory Quest and reflection
@@ -257,6 +263,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
   selectedTree: null,
   answerStones: null,
   choicesHidden: false,
+  servedSlices: [],
+  toggleServeSlice: (index) => {
+    const { selectedTree, servedSlices, showExplanationModal } = get();
+    if (!selectedTree?.serveConfig || showExplanationModal || index < 0 || index >= selectedTree.serveConfig.totalSlices) return;
+    set({ servedSlices: servedSlices.includes(index) ? servedSlices.filter((i) => i !== index) : [...servedSlices, index] });
+  },
   revealChoices: () => {
     const { selectedTree } = get();
     if (!selectedTree) return;
@@ -607,6 +619,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       selectedTree: tree,
       answerStones: choicesHidden ? null : stonesFor(tree),
       choicesHidden,
+      servedSlices: [],
       openTeachSpot: null,
       teachBackResult: null,
       teachBackError: null,
@@ -625,6 +638,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       selectedTree: null,
       answerStones: null,
       choicesHidden: false,
+      servedSlices: [],
       selectedConfidence: null,
       diagnosisResult: null,
       diagnosisError: null,
@@ -1060,11 +1074,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
     const { targetNumerator, targetDenominator, totalSlices } = tree.serveConfig;
     const targetRatio = targetNumerator / targetDenominator;
-    const studentRatio = servedCount / totalSlices;
-    const isCorrect = Math.abs(studentRatio - targetRatio) < 0.0001;
+    // Plain rules mark the serve and, if it's wrong, name the exact mistake (src/game/serve.ts).
+    const serve = diagnoseServe(tree.serveConfig, servedCount);
+    const isCorrect = serve.correct;
+    const unit = tree.serveConfig.whole === 'bridge' ? 'planks' : 'slices';
 
-    const chosenChoice = `${servedCount}/${totalSlices} slices`;
-    const correctChoice = `${Math.round(targetRatio * totalSlices)}/${totalSlices} slices (${targetNumerator}/${targetDenominator})`;
+    const chosenChoice = `${servedCount}/${totalSlices} ${unit}`;
+    const correctChoice = `${Math.round(targetRatio * totalSlices)}/${totalSlices} ${unit} (${targetNumerator}/${targetDenominator})`;
 
     const treePrediction = predictions[treeId] || null;
     let hit: PredictionHit | null = null;
@@ -1138,6 +1154,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
           isCorrect: true,
           tree,
           chosenChoice,
+          served: servedCount,
           confidence,
           prediction: treePrediction,
           predictionHit: hit,
@@ -1161,15 +1178,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
       get().updateTutorBeacon();
       get().refreshPredictions();
     } else {
-      // Wrong serve: Name mistake exactly per rules
-      let exactDiagnosis = '';
-      if (servedCount === targetNumerator && totalSlices !== targetDenominator) {
-        exactDiagnosis = `You served ${servedCount} slices (the top number), but this cake has ${totalSlices} slices. ${targetNumerator}/${targetDenominator} means ${targetNumerator} out of every ${targetDenominator}.`;
-      } else if (servedCount === targetDenominator) {
-        exactDiagnosis = `You counted the bottom number (${targetDenominator}) as the pieces to serve.`;
-      } else {
-        exactDiagnosis = `You served ${servedCount}/${totalSlices}. Is that the same as ${targetNumerator}/${targetDenominator}?`;
-      }
+      // A wrong serve names the exact mistake (top number, bottom number, the leftover part, too few...).
+      const exactDiagnosis = serve.line;
 
       const updatedTrees = updatedTreesWithSpacing.map((t) =>
         t.id === treeId ? { ...t, state: 'withered' as const, memoryDue: false } : t
@@ -1195,9 +1205,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
       // Only blame the mix-up this serve shows (it used to blame the concept's first one, whatever happened).
       const conceptMix = world.misconceptions.filter((m) => m.conceptId === tree.conceptId);
       const misObj =
-        servedCount === targetNumerator
+        serve.mistake === 'top-number'
           ? conceptMix.find((m) => /numerator|top number/i.test(m.label))
-          : servedCount === targetDenominator
+          : serve.mistake === 'bottom-number'
             ? conceptMix.find((m) => /denominator|bottom number/i.test(m.label))
             : undefined;
       const misId = misObj?.id ?? null;
@@ -1222,7 +1232,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         at: Date.now(),
       };
 
-      const scaffoldHint = `If you cut a cake into ${totalSlices} slices, how many groups of ${targetDenominator} can you make?`;
+      const scaffoldHint = serve.hint;
 
       const preliminaryAttempt: QuestionAttempt = {
         treeId,
@@ -1264,6 +1274,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
           isCorrect: false,
           tree,
           chosenChoice,
+          served: servedCount,
           confidence,
           prediction: treePrediction,
           predictionHit: hit,
