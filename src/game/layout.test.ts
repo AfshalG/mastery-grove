@@ -4,11 +4,15 @@ import { STONES, stoneSpots } from './stones';
 import {
   LAYOUT,
   approachPoint,
+  blockWater,
   distanceToTrail,
   findTreeSpot,
+  groundHeight,
+  groveEntrance,
   nearestGroveIndex,
   placeBaseTrees,
   planForest,
+  routeTo,
   scatterDecorations,
   scatterForest,
   signBoard,
@@ -254,5 +258,140 @@ describe('scatterForest', () => {
 
   it('grows the same forest every time', () => {
     expect(scatterForest(layout, questionTrees)).toEqual(forest);
+  });
+});
+
+describe('streams and bridges', () => {
+  it.each(SIZES)('a stream runs between each pair of groves, clear of clearings, signs and trees (%i groves, %i trees)', (n, m) => {
+    const { concepts, trees } = makeWorld(n, m);
+    const layout = planForest(concepts);
+    expect(layout.streams).toHaveLength(Math.max(0, n - 1));
+
+    const placed = Object.values(placeBaseTrees(layout, trees));
+    const extras: Vec2[] = [];
+    layout.groves.forEach((g) => {
+      for (let k = 0; k < 8; k++) extras.push(findTreeSpot(layout, g.index, [...placed, ...extras]));
+    });
+
+    layout.streams.forEach((s, k) => {
+      expect(s.beforeGrove).toBe(k + 1);
+      expect(s.z).toBeLessThan(layout.groves[k].centre.z);
+      expect(s.z).toBeGreaterThan(layout.groves[k + 1].centre.z);
+      for (const g of layout.groves) {
+        expect(Math.abs(g.centre.z - s.z)).toBeGreaterThan(g.clearingRadius + s.halfWidth + 1);
+        for (const end of signBoard(g)) expect(Math.abs(end.z - s.z)).toBeGreaterThan(s.halfWidth + 1);
+      }
+      // The bridge carries the trail across, and is longer than the stream is wide.
+      expect(distanceToTrail(layout, { x: s.bridge.x, z: s.z })).toBeLessThan(0.3);
+      expect(s.bridge.halfLength).toBeGreaterThan(s.halfWidth + 0.8);
+      for (const p of [...placed, ...extras]) expect(Math.abs(p.z - s.z)).toBeGreaterThan(s.halfWidth + 1.4);
+      expect(Math.abs(layout.spawn.z - s.z)).toBeGreaterThan(s.halfWidth + 2);
+    });
+  });
+
+  it('keeps flowers and scenery trees out of the water', () => {
+    const { concepts, trees } = makeWorld(3, 5);
+    const layout = planForest(concepts);
+    const spots = Object.values(placeBaseTrees(layout, trees));
+    for (const s of layout.streams) {
+      for (const d of scatterDecorations(layout, spots)) expect(Math.abs(d.z - s.z)).toBeGreaterThan(s.halfWidth + 0.5);
+      for (const f of scatterForest(layout, spots)) expect(Math.abs(f.z - s.z)).toBeGreaterThan(s.halfWidth + 1.5);
+    }
+  });
+});
+
+describe('blockWater', () => {
+  const layout = planForest(makeWorld(2, 5).concepts);
+  const s = layout.streams[0];
+  const bank = s.z + s.halfWidth + LAYOUT.BODY_RADIUS;
+
+  it('stops the kid at the bank, bridge or no bridge', () => {
+    const from = { x: s.bridge.x + 8, z: bank + 1 };
+    for (const open of [true, false]) {
+      const { p, blockedBy } = blockWater(layout, [open], from, { x: from.x, z: s.z });
+      expect(p.z).toBeCloseTo(bank, 5);
+      expect(blockedBy).toBe(0);
+    }
+  });
+
+  it('lets the kid onto a finished bridge, but not an unfinished one', () => {
+    const from = { x: s.bridge.x, z: bank + 0.2 };
+    const onto = { x: s.bridge.x, z: s.z };
+    expect(blockWater(layout, [true], from, onto)).toEqual({ p: onto, blockedBy: null });
+    const stopped = blockWater(layout, [false], from, onto);
+    expect(stopped.p.z).toBeCloseTo(bank, 5);
+    expect(stopped.blockedBy).toBe(0);
+  });
+
+  it('keeps a kid on the bridge from stepping off its side', () => {
+    const from = { x: s.bridge.x, z: s.z };
+    const { p } = blockWater(layout, [true], from, { x: s.bridge.x + 3, z: s.z - 0.1 });
+    expect(Math.abs(p.x - s.bridge.x)).toBeLessThanOrEqual(s.bridge.halfWidth - LAYOUT.BODY_RADIUS + 1e-9);
+    expect(p.z).toBeCloseTo(s.z - 0.1, 5);
+  });
+
+  it('leaves moves on dry land alone', () => {
+    const from = layout.spawn;
+    const to = { x: layout.spawn.x + 1, z: layout.spawn.z - 1 };
+    expect(blockWater(layout, [false], from, to)).toEqual({ p: to, blockedBy: null });
+  });
+});
+
+describe('routeTo (click to walk)', () => {
+  const layout = planForest(makeWorld(3, 5).concepts);
+  const [s0, s1] = layout.streams;
+  const far = { x: layout.groves[2].centre.x, z: layout.groves[2].centre.z };
+
+  it('goes straight when there is no water in the way', () => {
+    const to = { x: layout.groves[0].centre.x, z: layout.groves[0].centre.z };
+    expect(routeTo(layout, [true, true], layout.spawn, to)).toEqual({ path: [to], blockedAt: null });
+  });
+
+  it('crosses each stream by its bridge, in order', () => {
+    const { path, blockedAt } = routeTo(layout, [true, true], layout.spawn, far);
+    expect(blockedAt).toBeNull();
+    expect(path).toHaveLength(5);
+    expect(path[0].x).toBeCloseTo(s0.bridge.x, 5);
+    expect(path[0].z).toBeGreaterThan(s0.z);
+    expect(path[1].z).toBeLessThan(s0.z);
+    expect(path[2].x).toBeCloseTo(s1.bridge.x, 5);
+    expect(path[3].z).toBeLessThan(s1.z);
+    expect(path[4]).toEqual(far);
+  });
+
+  it('stops at the near end of the first unfinished bridge', () => {
+    const { path, blockedAt } = routeTo(layout, [true, false], layout.spawn, far);
+    expect(blockedAt).toBe(1);
+    expect(path).toHaveLength(3);
+    expect(path[2].z).toBeGreaterThan(s1.z);
+  });
+});
+
+describe('groundHeight', () => {
+  const layout = planForest(makeWorld(2, 5).concepts);
+  const s = layout.streams[0];
+
+  it('is flat ground away from bridges, and arches up over the middle of one', () => {
+    expect(groundHeight(layout, layout.spawn)).toBe(0);
+    const middle = groundHeight(layout, { x: s.bridge.x, z: s.z });
+    const end = groundHeight(layout, { x: s.bridge.x, z: s.z + s.bridge.halfLength * 0.95 });
+    expect(middle).toBeCloseTo(LAYOUT.BRIDGE_DECK_Y + LAYOUT.BRIDGE_ARCH, 5);
+    expect(end).toBeLessThan(middle);
+    expect(end).toBeGreaterThan(0);
+  });
+});
+
+describe('groveEntrance', () => {
+  it.each(SIZES)('is inside the clearing, in the ring’s gap, clear of the sign and the trees (%i groves, %i trees)', (n, m) => {
+    const { concepts, trees } = makeWorld(n, m);
+    const layout = planForest(concepts);
+    const placed = Object.values(placeBaseTrees(layout, trees));
+    for (const g of layout.groves) {
+      const e = groveEntrance(g);
+      expect(dist(e, g.centre)).toBeLessThan(g.clearingRadius);
+      expect(dist(e, g.sign)).toBeGreaterThan(2);
+      for (const p of placed) expect(dist(e, p)).toBeGreaterThan(2.4);
+      for (const s of layout.streams) expect(Math.abs(e.z - s.z)).toBeGreaterThan(s.halfWidth + 1);
+    }
   });
 });
