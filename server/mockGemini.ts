@@ -3,6 +3,7 @@
 import { SAMPLE_WORLD } from '../src/data/sampleWorld';
 import type { EndpointName, GeminiClient } from './gemini';
 import { buildPlainCodeRundown } from './rundown';
+import { keywordMarks } from '../src/game/teach';
 
 type Input = Record<string, any>;
 
@@ -108,6 +109,14 @@ const replies: Record<EndpointName, (input: Input) => unknown> = {
   }),
 
   'generate-rundown': ({ worldSubject = '', compactList = [] }) => buildPlainCodeRundown(worldSubject, compactList),
+
+  // Marks typed explanations by keywords. It can't listen, so a voice note is heard as silence.
+  'grade-teach-back': ({ rubricPoints = [], explanation = null }) => ({
+    transcript: '',
+    covered: explanation ? keywordMarks(rubricPoints, String(explanation)) : rubricPoints.map(() => false),
+    thanks: 'Oh! So the top and the bottom have to change together. Thank you!',
+    followUp: explanation ? 'But why is my way wrong? Can you say it another way?' : 'I couldn’t hear that. Can you type it for me?',
+  }),
 };
 
 export const MOCK_ENDPOINTS = Object.keys(replies) as EndpointName[];
