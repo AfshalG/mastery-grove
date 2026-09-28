@@ -1,430 +1,365 @@
-import React, { useState, useEffect, useRef } from 'react';
-import {
-  Sparkles,
-  BookOpen,
-  FileText,
-  Upload,
-  ArrowRight,
-  AlertCircle,
-  Clock,
-  CheckCircle2,
-  TreePine,
-  Bot,
-  RefreshCw,
-  Compass,
-} from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { AlertCircle, ArrowRight, Camera, FileText, PenLine, Users } from 'lucide-react';
 import { useGameStore } from '../../store/useGameStore';
 import { WorldData } from '../../types/game';
+import { SAMPLE_READING_WORLD } from '../../data/readingWorld';
+import { Sprout } from './icons';
+
+type Source = 'topic' | 'text' | 'file';
+
+const SOURCES: Array<{ id: Source; label: string; icon: React.ReactNode }> = [
+  { id: 'topic', label: 'Topic', icon: <PenLine className="w-4 h-4" /> },
+  { id: 'text', label: 'Paste text', icon: <FileText className="w-4 h-4" /> },
+  { id: 'file', label: 'Photo or PDF', icon: <Camera className="w-4 h-4" /> },
+];
+const SUGGESTIONS = ['Primary 5 Fractions', 'Ecosystems & Food Chains', 'Primary 4 English: Reading'];
+
+const field =
+  'w-full px-4 py-3 bg-white border-2 border-paper-edge rounded-xl text-base text-ink placeholder:text-ink-soft/60 focus:outline-none focus:border-leaf transition-colors';
+
+/** The cover picture: hills, a winding path and the explorer, drawn in the game's own palette. */
+const CoverArt: React.FC = () => (
+  <svg viewBox="0 0 1440 360" preserveAspectRatio="xMidYMax slice" className="absolute bottom-0 inset-x-0 w-full h-[42dvh] pointer-events-none" aria-hidden="true">
+    <path d="M0 170 C 220 110 420 150 620 120 C 860 85 1080 150 1440 105 V 360 H 0 Z" fill="#bfd394" />
+    <path d="M0 225 C 260 170 520 215 760 185 C 1000 155 1220 215 1440 180 V 360 H 0 Z" fill="#a2bc6c" />
+    <path d="M0 290 C 300 245 560 290 820 260 C 1060 235 1260 280 1440 255 V 360 H 0 Z" fill="#8ca95b" />
+    <path d="M700 360 C 690 320 760 300 735 262 C 712 228 770 205 748 186 C 735 175 745 160 752 150" stroke="#e2c898" strokeWidth="34" fill="none" strokeLinecap="round" />
+    {[
+      [120, 150, 1.1, '#4f8c50'],
+      [210, 140, 0.8, '#5f9f5a'],
+      [330, 160, 1.3, '#4f8c50'],
+      [1150, 150, 1.2, '#5f9f5a'],
+      [1260, 130, 0.9, '#4f8c50'],
+      [1360, 145, 1.1, '#70ae62'],
+      [520, 190, 0.9, '#70ae62'],
+      [960, 180, 1.0, '#4f8c50'],
+    ].map(([x, y, s, c], i) => (
+      <g key={`pine${i}`} transform={`translate(${x} ${y}) scale(${s})`}>
+        <rect x="-4" y="-6" width="8" height="18" rx="2" fill="#6b4a2b" />
+        <path d="M0 -70 L 26 -22 H -26 Z M0 -48 L 32 -2 H -32 Z" fill={c as string} stroke="#2f2a22" strokeWidth="2.5" strokeLinejoin="round" />
+      </g>
+    ))}
+    {[
+      [60, 250, 1.2, '#70ae62'],
+      [420, 250, 1.0, '#5f9f5a'],
+      [610, 275, 0.8, '#4f8c50'],
+      [1010, 250, 1.1, '#70ae62'],
+      [1320, 265, 1.3, '#5f9f5a'],
+    ].map(([x, y, s, c], i) => (
+      <g key={`round${i}`} transform={`translate(${x} ${y}) scale(${s})`}>
+        <rect x="-5" y="-8" width="10" height="26" rx="3" fill="#eee6d6" stroke="#2f2a22" strokeWidth="2" />
+        <circle cx="0" cy="-34" r="30" fill={c as string} stroke="#2f2a22" strokeWidth="2.5" />
+        <circle cx="-9" cy="-44" r="5" fill="#fbe3ea" />
+        <circle cx="11" cy="-28" r="4" fill="#fbe3ea" />
+      </g>
+    ))}
+    {/* The explorer, on their way up the path */}
+    <g transform="translate(728 300)">
+      <ellipse cx="0" cy="14" rx="14" ry="4" fill="#2f2a22" opacity="0.2" />
+      <rect x="-6" y="0" width="5" height="12" rx="2" fill="#4a4e69" />
+      <rect x="1" y="0" width="5" height="12" rx="2" fill="#4a4e69" />
+      <path d="M-11 2 C -11 -18, 11 -18, 11 2 Z" fill="#f2c14e" stroke="#2f2a22" strokeWidth="2" />
+      <circle cx="0" cy="-24" r="9" fill="#f1cfae" stroke="#2f2a22" strokeWidth="2" />
+      <path d="M-9.5 -25 C -9.5 -38, 9.5 -38, 9.5 -25 Z" fill="#d9534f" stroke="#2f2a22" strokeWidth="2" />
+      <circle cx="0" cy="-37" r="3.5" fill="#f6efe0" stroke="#2f2a22" strokeWidth="1.5" />
+    </g>
+  </svg>
+);
+
+/** Join a class: the teacher's code and a first name, and the teacher's forest opens with classmates in it. */
+const JoinClass: React.FC<{ onJoining: () => void }> = ({ onJoining }) => {
+  const joinClassRoom = useGameStore((s) => s.joinClassRoom);
+  const roomError = useGameStore((s) => s.roomError);
+  const [code, setCode] = useState('');
+  const [name, setName] = useState('');
+  const [joining, setJoining] = useState(false);
+  const ready = code.replace(/[^a-z0-9]/gi, '').length === 4 && name.trim().length > 0;
+
+  const join = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!ready || joining) return;
+    onJoining();
+    setJoining(true);
+    await joinClassRoom(code, name.trim());
+    setJoining(false);
+  };
+
+  return (
+    <form onSubmit={join} className="paper w-full p-4 sm:p-5 space-y-3" data-testid="join-class">
+      <div className="flex items-center gap-2.5">
+        <Users className="w-5 h-5 text-leaf-deep" />
+        <h2 className="text-lg font-black">Join your class</h2>
+      </div>
+      <div className="grid grid-cols-[7.5rem_1fr] gap-2">
+        <input
+          value={code}
+          onChange={(e) => setCode(e.target.value.toUpperCase().slice(0, 6))}
+          placeholder="CODE"
+          aria-label="Class code"
+          autoComplete="off"
+          autoCapitalize="characters"
+          data-testid="class-code-input"
+          className={`${field} text-center font-black tracking-[0.3em] uppercase`}
+        />
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value.slice(0, 20))}
+          placeholder="Your first name"
+          aria-label="Your first name"
+          autoComplete="given-name"
+          data-testid="class-name-input"
+          className={field}
+        />
+      </div>
+      {roomError && (
+        <p className="text-sm font-bold text-berry-deep" data-testid="join-error">
+          {roomError}
+        </p>
+      )}
+      <button type="submit" disabled={!ready || joining} data-testid="join-class-btn" className="btn btn-leaf w-full py-2.5">
+        {joining ? 'Joining…' : 'Join'}
+      </button>
+    </form>
+  );
+};
 
 export const StartScreen: React.FC = () => {
-  const { loadWorld, loadSampleWorld } = useGameStore();
+  const loadWorld = useGameStore((s) => s.loadWorld);
+  const loadSampleWorld = useGameStore((s) => s.loadSampleWorld);
 
-  const [activeTab, setActiveTab] = useState<'topic' | 'text' | 'file'>('topic');
+  const [source, setSource] = useState<Source>('topic');
   const [topicInput, setTopicInput] = useState('Primary 5 Fractions');
   const [textInput, setTextInput] = useState('');
-  const [uploadedFile, setUploadedFile] = useState<{
-    name: string;
-    mimeType: string;
-    base64: string;
-    size: string;
-  } | null>(null);
-
+  const [uploadedFile, setUploadedFile] = useState<{ name: string; mimeType: string; base64: string; size: string } | null>(null);
   const [isGrowing, setIsGrowing] = useState(false);
-  const [growProgressIndex, setGrowProgressIndex] = useState(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
-  const timerRef = useRef<any>(null);
-
-  const progressSteps = [
-    'Reading the worksheet… planting groves…',
-    'Analyzing student misconceptions & edge cases…',
-    'Cultivating 3D question trees along the path…',
-    'Awakening Professor Byte and lighting tutor beacons…',
-  ];
+  // Each grow gets a number. A reply for an older number is ignored, so a slow Gemini answer can't
+  // replace the sample forest after the kid has already walked into it.
+  const growRequest = useRef(0);
 
   useEffect(() => {
-    let interval: any;
-    if (isGrowing) {
-      interval = setInterval(() => {
-        setGrowProgressIndex((prev) => (prev + 1) % progressSteps.length);
-      }, 3500);
-
-      timerRef.current = setInterval(() => {
-        setElapsedSeconds((prev) => prev + 1);
-      }, 1000);
-    } else {
+    if (!isGrowing) {
       setElapsedSeconds(0);
-      setGrowProgressIndex(0);
-      if (timerRef.current) clearInterval(timerRef.current);
+      return;
     }
-
-    return () => {
-      if (interval) clearInterval(interval);
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
+    const timer = setInterval(() => setElapsedSeconds((s) => s + 1), 1000);
+    return () => clearInterval(timer);
   }, [isGrowing]);
+
+  const playSample = () => {
+    growRequest.current++;
+    setIsGrowing(false);
+    loadSampleWorld();
+  };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     const reader = new FileReader();
     reader.onload = () => {
-      const resultStr = reader.result as string;
-      // Strip off base64 data header e.g. "data:image/png;base64,"
-      const base64Content = resultStr.split(',')[1] || '';
-      setUploadedFile({
-        name: file.name,
-        mimeType: file.type || 'application/octet-stream',
-        base64: base64Content,
-        size: `${(file.size / 1024).toFixed(1)} KB`,
-      });
+      const base64 = String(reader.result).split(',')[1] || '';
+      setUploadedFile({ name: file.name, mimeType: file.type || 'application/octet-stream', base64, size: `${(file.size / 1024).toFixed(1)} KB` });
       setErrorMsg(null);
     };
-    reader.onerror = () => {
-      setErrorMsg('Failed to read the uploaded file.');
-    };
+    reader.onerror = () => setErrorMsg("We couldn't read that file. Try another photo or PDF.");
     reader.readAsDataURL(file);
   };
 
   const handleGrowWorld = async () => {
-    setIsGrowing(true);
-    setErrorMsg(null);
-    setElapsedSeconds(0);
-
-    const payload: {
-      topic?: string;
-      text?: string;
-      fileData?: { mimeType: string; base64: string };
-    } = {};
-
-    if (activeTab === 'topic') {
-      if (!topicInput.trim()) {
-        setErrorMsg('Please enter a topic name.');
-        setIsGrowing(false);
-        return;
-      }
+    const payload: { topic?: string; text?: string; fileData?: { mimeType: string; base64: string } } = {};
+    if (source === 'topic') {
+      if (!topicInput.trim()) return setErrorMsg('Type a topic first.');
       payload.topic = topicInput.trim();
-    } else if (activeTab === 'text') {
-      if (!textInput.trim()) {
-        setErrorMsg('Please paste worksheet text.');
-        setIsGrowing(false);
-        return;
-      }
+    } else if (source === 'text') {
+      if (!textInput.trim()) return setErrorMsg('Paste some worksheet questions first.');
       payload.text = textInput.trim();
-    } else if (activeTab === 'file') {
-      if (!uploadedFile) {
-        setErrorMsg('Please select a photo or PDF worksheet first.');
-        setIsGrowing(false);
-        return;
-      }
-      payload.fileData = {
-        mimeType: uploadedFile.mimeType,
-        base64: uploadedFile.base64,
-      };
+    } else {
+      if (!uploadedFile) return setErrorMsg('Choose a photo or PDF first.');
+      payload.fileData = { mimeType: uploadedFile.mimeType, base64: uploadedFile.base64 };
     }
 
+    const request = ++growRequest.current;
+    setIsGrowing(true);
+    setErrorMsg(null);
     try {
       const res = await fetch('/api/generate-world', {
         method: 'POST',
+        // A stuck request gives up and shows the retry, instead of spinning.
+        signal: AbortSignal.timeout(150_000),
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-
       if (!res.ok) {
-        const errorJson = await res.json().catch(() => ({}));
-        throw new Error(errorJson.error || `Server returned error (${res.status})`);
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `The server said no (${res.status}).`);
       }
-
       const worldData: WorldData = await res.json();
-      if (!worldData.concepts || !worldData.trees || worldData.trees.length === 0) {
-        throw new Error('Received invalid world structure from generator.');
-      }
-
+      if (!worldData.concepts?.length || !worldData.trees?.length) throw new Error('The forest came back empty.');
+      if (request !== growRequest.current) return; // the kid already chose something else
       setIsGrowing(false);
       loadWorld(worldData);
     } catch (err: any) {
+      if (request !== growRequest.current) return;
       console.error('Failed to grow world:', err);
       setIsGrowing(false);
-      setErrorMsg(
-        err?.message ||
-          'Gemini could not generate this world right now. Please check your network or try the sample world!'
-      );
+      setErrorMsg(err?.message || "Gemini couldn't grow this forest right now.");
     }
   };
 
   return (
-    <div className="min-h-screen w-full bg-linear-to-b from-slate-900 via-emerald-950 to-slate-950 text-slate-100 flex flex-col items-center justify-center p-4 sm:p-6 select-none relative overflow-hidden">
-      {/* Decorative background glow rings */}
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-10 right-10 w-[350px] h-[350px] bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+    <div
+      className="min-h-dvh w-full relative overflow-hidden text-ink"
+      style={{ background: 'linear-gradient(180deg, #8cc7df 0%, #cfe6e8 42%, #f6e8c8 72%)' }}
+    >
+      <CoverArt />
 
-      <main className="w-full max-w-2xl z-10 space-y-6">
-        {/* Brand Header */}
+      <main className="relative z-10 w-full max-w-xl mx-auto px-4 pt-10 sm:pt-14 pb-[34dvh] flex flex-col items-center gap-5">
         <div className="text-center space-y-2">
-          <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white font-['Outfit',sans-serif]">
-            Mastery Grove
-          </h1>
-
-          <p className="text-sm sm:text-base text-slate-300 max-w-md mx-auto">
-            Turn any worksheet into a forest you can walk through.
-          </p>
+          <h1 className="text-4xl sm:text-5xl font-black tracking-tight">Mastery Grove</h1>
+          <p className="text-base sm:text-lg font-semibold text-ink-soft">Every question is a tree. Answer them and the forest grows.</p>
         </div>
 
-        {/* Main Creation Card */}
-        <div className="bg-slate-900/80 backdrop-blur-md border border-slate-700/80 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-4">
-            <div>
-              <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-amber-400" />
-                Make a forest
-              </h2>
-              <p className="text-xs text-slate-400 mt-0.5">
-                From a topic, some text, or a photo of a worksheet.
-              </p>
-            </div>
+        <div className="w-full flex flex-col items-center gap-2">
+          <button onClick={playSample} data-testid="play-sample-btn" className="btn btn-sun w-full sm:w-auto px-7 py-3.5 text-lg">
+            Walk the fractions forest
+            <ArrowRight className="w-5 h-5" />
+          </button>
+          <button
+            onClick={() => {
+              growRequest.current++;
+              setIsGrowing(false);
+              loadWorld(SAMPLE_READING_WORLD);
+            }}
+            data-testid="play-reading-btn"
+            className="text-sm font-bold text-ink-soft underline decoration-2 underline-offset-4 hover:text-ink"
+          >
+            or the autumn reading forest
+          </button>
+        </div>
 
-            {/* Quick Play Sample World Button */}
-            <button
-              onClick={loadSampleWorld}
-              data-testid="play-sample-btn"
-              disabled={isGrowing}
-              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-amber-300 hover:text-amber-200 border border-slate-700 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 shadow-sm"
-            >
-              <Compass className="w-3.5 h-3.5" />
-              <span>Try the fractions forest</span>
-            </button>
+        <JoinClass onJoining={() => growRequest.current++} />
+
+        <section className="paper w-full p-4 sm:p-5 space-y-4">
+          <div>
+            <h2 className="text-lg font-black">Or grow one from your worksheet</h2>
+            <p className="text-sm text-ink-soft">Type a topic, paste the questions, or snap a photo.</p>
           </div>
 
-          {/* Input Method Tabs */}
-          <div className="grid grid-cols-3 gap-2 bg-slate-950/60 p-1.5 rounded-2xl border border-slate-800">
-            <button
-              type="button"
-              data-testid="tab-topic"
-              onClick={() => setActiveTab('topic')}
-              disabled={isGrowing}
-              className={`py-2 px-3 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 ${
-                activeTab === 'topic'
-                  ? 'bg-emerald-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
-              }`}
-            >
-              <BookOpen className="w-3.5 h-3.5" />
-              <span>Topic</span>
-            </button>
-
-            <button
-              type="button"
-              data-testid="tab-text"
-              onClick={() => setActiveTab('text')}
-              disabled={isGrowing}
-              className={`py-2 px-3 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 ${
-                activeTab === 'text'
-                  ? 'bg-emerald-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
-              }`}
-            >
-              <FileText className="w-3.5 h-3.5" />
-              <span>Paste Text</span>
-            </button>
-
-            <button
-              type="button"
-              data-testid="tab-file"
-              onClick={() => setActiveTab('file')}
-              disabled={isGrowing}
-              className={`py-2 px-3 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 ${
-                activeTab === 'file'
-                  ? 'bg-emerald-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
-              }`}
-            >
-              <Upload className="w-3.5 h-3.5" />
-              <span>Photo / PDF</span>
-            </button>
+          <div role="tablist" className="grid grid-cols-3 gap-1.5 p-1 rounded-2xl bg-paper-deep">
+            {SOURCES.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                role="tab"
+                aria-selected={source === s.id}
+                data-testid={`tab-${s.id}`}
+                onClick={() => setSource(s.id)}
+                disabled={isGrowing}
+                className={`py-2 px-2 rounded-xl text-sm font-bold flex items-center justify-center gap-1.5 transition-colors ${
+                  source === s.id ? 'bg-paper shadow-[0_2px_0_var(--color-paper-edge)] text-ink' : 'text-ink-soft hover:text-ink'
+                }`}
+              >
+                {s.icon}
+                <span>{s.label}</span>
+              </button>
+            ))}
           </div>
 
-          {/* Tab Content Fields */}
-          <div className="space-y-3">
-            {activeTab === 'topic' && (
-              <div className="space-y-2">
-                <label className="text-xs font-semibold text-slate-300">
-                  Topic or Curriculum Standard:
-                </label>
-                <input
-                  type="text"
-                  value={topicInput}
-                  onChange={(e) => setTopicInput(e.target.value)}
-                  placeholder="e.g. Primary 5 Fractions, 4th Grade Photosynthesis..."
-                  disabled={isGrowing}
-                  className="w-full px-4 py-3 bg-slate-950/80 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all"
-                />
-                <div className="flex flex-wrap gap-1.5 pt-1">
-                  <span className="text-[11px] text-slate-400">Suggestions:</span>
-                  {['Primary 5 Fractions', 'Ecosystems & Food Chains', 'Solving Linear Equations'].map((s) => (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => setTopicInput(s)}
-                      className="text-[11px] text-emerald-400 hover:underline hover:text-emerald-300"
-                    >
-                      {s}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'text' && (
-              <div className="space-y-2">
-                <label className="text-xs font-semibold text-slate-300">
-                  Paste Worksheet or Quiz Text:
-                </label>
-                <textarea
-                  rows={4}
-                  value={textInput}
-                  onChange={(e) => setTextInput(e.target.value)}
-                  placeholder="Paste teacher worksheet questions, answer keys, or curriculum notes here..."
-                  disabled={isGrowing}
-                  className="w-full px-4 py-3 bg-slate-950/80 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all font-mono text-xs leading-relaxed"
-                />
-              </div>
-            )}
-
-            {activeTab === 'file' && (
-              <div className="space-y-2">
-                <label className="text-xs font-semibold text-slate-300">
-                  Upload Worksheet Photo or PDF:
-                </label>
-                <div className="border-2 border-dashed border-slate-700 rounded-2xl p-6 text-center hover:border-emerald-500/70 transition-all bg-slate-950/40">
-                  <input
-                    type="file"
-                    id="worksheet-file"
-                    accept="image/*,application/pdf"
-                    onChange={handleFileUpload}
-                    disabled={isGrowing}
-                    className="hidden"
-                  />
-                  <label
-                    htmlFor="worksheet-file"
-                    className="cursor-pointer flex flex-col items-center justify-center space-y-2"
-                  >
-                    <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
-                      <Upload className="w-6 h-6" />
-                    </div>
-                    {uploadedFile ? (
-                      <div className="space-y-1">
-                        <p className="text-sm font-bold text-emerald-400 flex items-center justify-center gap-1.5">
-                          <CheckCircle2 className="w-4 h-4" />
-                          {uploadedFile.name}
-                        </p>
-                        <p className="text-xs text-slate-400">{uploadedFile.size}</p>
-                      </div>
-                    ) : (
-                      <div>
-                        <p className="text-sm font-semibold text-slate-200">
-                          Click to select a photo or PDF
-                        </p>
-                        <p className="text-xs text-slate-500 mt-0.5">
-                          Supports PNG, JPG, WebP, or PDF worksheets
-                        </p>
-                      </div>
-                    )}
-                  </label>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Growing Progress Indicator */}
-          {isGrowing && (
-            <div className="p-4 rounded-2xl bg-emerald-950/50 border border-emerald-700/50 space-y-3 animate-in fade-in duration-200">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center animate-spin">
-                  <RefreshCw className="w-4 h-4" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm font-bold text-emerald-200">
-                    Planting your forest…
-                  </p>
-                  <p className="text-xs text-emerald-400/80">
-                    {elapsedSeconds}s
-                  </p>
-                </div>
-              </div>
-
-              {/* If taking longer than 60 seconds, offer sample world */}
-              {elapsedSeconds >= 60 && (
-                <div className="pt-2 border-t border-emerald-800/60 flex items-center justify-between text-xs text-amber-300">
-                  <div className="flex items-center gap-1.5">
-                    <Clock className="w-3.5 h-3.5" />
-                    <span>Taking a bit longer than usual.</span>
-                  </div>
-                  <button
-                    onClick={loadSampleWorld}
-                    data-testid="offer-sample-btn"
-                    className="font-bold underline hover:text-white"
-                  >
-                    Try the fractions forest instead
+          {source === 'topic' && (
+            <div className="space-y-2">
+              <input
+                type="text"
+                value={topicInput}
+                onChange={(e) => setTopicInput(e.target.value)}
+                placeholder="e.g. Primary 5 Fractions"
+                aria-label="Topic"
+                disabled={isGrowing}
+                className={field}
+              />
+              <div className="flex flex-wrap gap-1.5">
+                {SUGGESTIONS.map((s) => (
+                  <button key={s} type="button" onClick={() => setTopicInput(s)} className="px-2.5 py-1 rounded-full text-xs font-bold bg-leaf-soft text-leaf-deep hover:brightness-95">
+                    {s}
                   </button>
-                </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {source === 'text' && (
+            <textarea
+              rows={5}
+              value={textInput}
+              onChange={(e) => setTextInput(e.target.value)}
+              placeholder="Paste the worksheet questions here"
+              aria-label="Worksheet text"
+              disabled={isGrowing}
+              className={`${field} text-sm leading-relaxed`}
+            />
+          )}
+
+          {source === 'file' && (
+            <label
+              htmlFor="worksheet-file"
+              className="block cursor-pointer rounded-2xl border-2 border-dashed border-paper-edge bg-white/70 p-5 text-center hover:border-leaf transition-colors"
+            >
+              <input type="file" id="worksheet-file" accept="image/*,application/pdf" onChange={handleFileUpload} disabled={isGrowing} className="hidden" />
+              <Camera className="w-7 h-7 mx-auto text-leaf" />
+              {uploadedFile ? (
+                <p className="mt-2 text-sm font-bold">
+                  {uploadedFile.name} <span className="font-semibold text-ink-soft">({uploadedFile.size})</span>
+                </p>
+              ) : (
+                <>
+                  <p className="mt-2 text-sm font-bold">Choose a photo or PDF of the worksheet</p>
+                  <p className="text-xs text-ink-soft">A clear phone photo works fine.</p>
+                </>
+              )}
+            </label>
+          )}
+
+          {isGrowing && (
+            <div className="rise-in flex items-center gap-3 rounded-2xl bg-leaf-soft px-4 py-3">
+              <Sprout size={28} className="animate-bounce" />
+              <div className="flex-1">
+                <p className="font-bold">Planting your forest…</p>
+                <p className="text-xs text-ink-soft">{elapsedSeconds}s · usually about 15 seconds</p>
+              </div>
+              {elapsedSeconds >= 60 && (
+                <button onClick={playSample} data-testid="offer-sample-btn" className="text-sm font-bold underline">
+                  Walk the fractions forest instead
+                </button>
               )}
             </div>
           )}
 
-          {/* Error Message with Retry */}
           {errorMsg && (
-            <div className="p-4 rounded-2xl bg-rose-950/60 border border-rose-800 text-rose-200 space-y-3">
-              <div className="flex items-center gap-2">
-                <AlertCircle className="w-5 h-5 text-rose-400 shrink-0" />
-                <p className="text-sm font-semibold">That didn't work</p>
-              </div>
-              <p className="text-xs text-rose-300 leading-relaxed">{errorMsg}</p>
-              <div className="flex items-center gap-3 pt-1">
-                <button
-                  onClick={handleGrowWorld}
-                  data-testid="retry-grow-btn"
-                  className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow-sm"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  <span>Try again</span>
+            <div className="rise-in rounded-2xl bg-berry-soft px-4 py-3 space-y-2.5">
+              <p className="flex items-center gap-2 font-bold text-berry-deep">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                That didn't work
+              </p>
+              <p className="text-sm text-ink-soft">{errorMsg}</p>
+              <div className="flex flex-wrap gap-2">
+                <button onClick={handleGrowWorld} data-testid="retry-grow-btn" className="btn btn-berry px-3.5 py-1.5 text-sm">
+                  Try again
                 </button>
-                <button
-                  onClick={loadSampleWorld}
-                  data-testid="play-sample-world-btn"
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-amber-300 hover:text-amber-200 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow-sm"
-                >
-                  <Compass className="w-3.5 h-3.5" />
-                  <span>Try the fractions forest</span>
+                <button onClick={playSample} data-testid="play-sample-world-btn" className="btn btn-paper px-3.5 py-1.5 text-sm">
+                  Walk the fractions forest
                 </button>
               </div>
             </div>
           )}
 
-          {/* Bottom Action Bar */}
-          <div className="pt-2">
-            <button
-              onClick={handleGrowWorld}
-              data-testid="grow-world-btn"
-              disabled={isGrowing}
-              className="w-full py-3.5 px-6 rounded-2xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-lg hover:shadow-emerald-600/30"
-            >
-              <span>Grow it</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
+          <button onClick={handleGrowWorld} data-testid="grow-world-btn" disabled={isGrowing} className="btn btn-leaf w-full py-3 text-base">
+            Grow my forest
+          </button>
+        </section>
 
-        {/* Feature Line */}
-        <p className="text-center text-xs text-slate-300">
-          Wrong answers tell us why. Right answers grow trees.
-        </p>
-
-        {/* Small Footer */}
-        <footer className="text-center text-[11px] text-slate-500 pt-2">
-          Made by Afshal at the Berkeley × DeepMind hackathon · Mastery Grove v1 was built with Zen and Roshan.
-        </footer>
+        <p className="text-sm font-bold text-ink-soft text-center">Wrong answers tell us why. Right answers grow trees.</p>
+        <footer className="text-xs text-ink-soft/80 text-center">Made by Afshal, Roshan and Sophie at the Berkeley x DeepMind hackathon.</footer>
       </main>
     </div>
   );

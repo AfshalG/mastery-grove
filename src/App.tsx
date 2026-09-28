@@ -10,11 +10,15 @@ import { TeacherScreen } from './components/ui/TeacherScreen';
 import { ForestScene } from './components/3d/ForestScene';
 import { HUD } from './components/ui/HUD';
 import { QuestionModal } from './components/ui/QuestionModal';
+import { ReflectionCard } from './components/ui/ReflectionCard';
+import { TeachCard } from './components/ui/TeachCard';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
 import { sounds } from './utils/audio';
 
 export default function App() {
-  const { screen, soundTrigger } = useGameStore();
+  // Two fields only: reading the whole store here re-rendered the entire game on every change.
+  const screen = useGameStore((s) => s.screen);
+  const soundTrigger = useGameStore((s) => s.soundTrigger);
 
   useEffect(() => {
     if (!soundTrigger) return;
@@ -44,7 +48,7 @@ export default function App() {
   }
 
   return (
-    <div className="w-screen h-screen overflow-hidden relative bg-slate-900 select-none">
+    <div className="w-screen h-dvh overflow-hidden relative bg-slate-900 select-none">
       {/* 3D Forest Scene wrapped in Error Boundary */}
       <ErrorBoundary fallbackTitle="3D Forest Scene">
         <ForestScene />
@@ -58,6 +62,8 @@ export default function App() {
       {/* Tree Question & Diagnosis Modal wrapped in Error Boundary */}
       <ErrorBoundary fallbackTitle="Question Dialogue">
         <QuestionModal />
+        <TeachCard />
+        <ReflectionCard />
       </ErrorBoundary>
     </div>
   );

@@ -12,10 +12,17 @@ export type FractionVisual =
   | { kind: 'two-cakes'; left: { parts: number; shaded: number }; right: { parts: number; shaded: number } }
   | { kind: 'bar'; parts: number; shaded: number };
 
+export interface Passage {
+  title: string;
+  text: string;
+}
+
 export interface ServeConfig {
   targetNumerator: number;
   targetDenominator: number;
   totalSlices: number; // N, multiple of denominator
+  /** What gets shared out: slices of a cake (the default), or planks laid on a bridge. */
+  whole?: 'cake' | 'bridge';
 }
 
 export interface TreeData {
@@ -29,6 +36,8 @@ export interface TreeData {
   state: TreeState;
   kind?: 'mcq' | 'serve';        // default 'mcq'
   visual?: FractionVisual;
+  /** A short passage to read first, for reading questions. */
+  passage?: Passage;
   serveConfig?: ServeConfig;
   isSapling?: boolean;
   sourceTreeId?: string;
@@ -39,6 +48,8 @@ export interface TreeData {
   isMemorySprout?: boolean;      // "Memory Sprout" retention check question tree (cyan/emerald glow)
   targetMisconceptionId?: string;
   answersSinceMiss?: number;     // Spacing counter: needs >= 2 to unlock
+  nearTreeId?: string;           // Layout hint: plant this extra tree next to that one
+  memoryDue?: boolean;           // Back for a memory check in this session's Memory Quest (answered from memory)
 }
 
 export interface ConceptData {
@@ -54,11 +65,28 @@ export interface MisconceptionData {
   label: string;
 }
 
+/**
+ * Mia, a classmate sitting at the heart of a grove, is stuck on one mix-up. The kid explains it to her:
+ * teaching something is the best test of knowing it.
+ */
+export interface TeachSpot {
+  conceptId: string;
+  /** The world's misconception Mia has, when she has one of them. */
+  misconceptionId?: string;
+  /** What Mia says: her wrong working and her question, in her own words. */
+  puzzledThought: string;
+  /** Her wrong working, short enough for the slate she holds up (e.g. "4/8 = 2/8 ?"). */
+  board?: string;
+  /** What a good explanation covers. Gemini marks which ones the kid covered; code decides whether Mia gets it. */
+  rubricPoints: string[];
+}
+
 export interface WorldData {
   subject: string;
   concepts: ConceptData[];
   misconceptions: MisconceptionData[];
   trees: TreeData[];
+  teachSpots?: TeachSpot[];
 }
 
 export interface DiagnosisResponse {
@@ -115,19 +143,23 @@ export interface TeachBackResult {
   hit: string[];
   missing: string[];
   miaReply: string;
+  /** What Gemini heard, when the kid talked instead of typing. */
+  transcript: string | null;
+  /** 'keywords' when Gemini couldn't be reached and the plain-code keyword check marked it instead. */
+  gradedBy: 'gemini' | 'keywords';
 }
 
-export interface MiaTeachSpot {
-  groveIndex: number;
+/** One try at explaining a grove's mix-up to Mia. */
+export interface TeachBackRecord {
   conceptId: string;
-  conceptName: string;
-  questName: string;
-  misconceptionId: string;
-  misconceptionLabel: string;
-  puzzledThought: string;
-  rubricPoints: string[];
-  position: [number, number, number];
-  isCompleted?: boolean;
+  passed: boolean;
+  hit: string[];
+  missing: string[];
+  /** The kid's explanation: what they typed, or what Gemini heard them say. */
+  words: string;
+  spoken: boolean;
+  session: number;
+  at: number;
 }
 
 export interface PredictionStats {
@@ -147,6 +179,8 @@ export interface ClassmateData {
   predictionStats: PredictionStats;
   attempts: QuestionAttempt[];
   flags: ThoughtProcessRecord[];
+  teachBacks?: TeachBackRecord[];
+  reflections?: Reflection[];
 }
 
 export interface RundownReport {
@@ -167,6 +201,19 @@ export interface InterventionData {
   miniLessonBullets: string[];
   fiveMinuteActivity: string;
   pedagogicalInsight: string;
+}
+
+export type ReflectionRating = 1 | 2 | 3 | 4;
+
+export interface Reflection {
+  conceptId: string;
+  rating: ReflectionRating;
+  note: string;
+  /** Share of this grove's answers the kid got right when they reflected. */
+  accuracy: number;
+  feedback: string | null;
+  session: number;
+  at: number;
 }
 
 export interface WelcomeBackInfo {

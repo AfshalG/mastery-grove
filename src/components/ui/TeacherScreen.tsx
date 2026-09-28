@@ -6,7 +6,6 @@ import {
   XCircle,
   HelpCircle,
   TreePine,
-  Sparkles,
   Bot,
   BrainCircuit,
   Target,
@@ -35,10 +34,17 @@ import {
   ClassmateData,
   QuestionAttempt,
   ThoughtProcessRecord,
+  TreeData,
   RundownReport,
   InterventionData,
   MisconceptionData,
+  Reflection,
+  TeachBackRecord,
 } from '../../types/game';
+import { judgmentFeedback, judgmentGap } from '../../game/memory';
+import { validTeachSpots } from '../../game/teach';
+import { isReadingSubject } from '../../game/skins';
+import { Leaf, MiaFace } from './icons';
 
 export const TeacherScreen: React.FC = () => {
   const {
@@ -52,7 +58,20 @@ export const TeacherScreen: React.FC = () => {
     setScreen,
     deployTeacherQuest,
     teacherToast,
+    session,
+    startNextSession,
+    teachBacks: liveTeachBacks,
+    reflections: liveReflections,
+    room,
+    roster,
+    roomPlayers,
+    roomError,
+    openClassRoom,
+    leaveClassRoom,
+    startClassSession,
   } = useGameStore();
+  // A moment of "Session 2 started" on the button after the teacher starts the next session.
+  const [sessionStarted, setSessionStarted] = useState(false);
 
   const [selectedStudentId, setSelectedStudentId] = useState<string>('student-you');
   const [activeTab, setActiveTab] = useState<'heatmap' | 'flags'>('heatmap');
@@ -65,7 +84,7 @@ export const TeacherScreen: React.FC = () => {
   const [selectedCell, setSelectedCell] = useState<{
     student: ClassmateData;
     misconception: MisconceptionData;
-    status: 'overcome' | 'active' | 'severe' | 'untested';
+    status: 'overcome' | 'clear' | 'active' | 'severe' | 'untested';
     strength: number;
   } | null>(null);
 
@@ -73,6 +92,7 @@ export const TeacherScreen: React.FC = () => {
   const [showInterventionModal, setShowInterventionModal] = useState(false);
   const [isLoadingIntervention, setIsLoadingIntervention] = useState(false);
   const [interventionData, setInterventionData] = useState<InterventionData | null>(null);
+  const [interventionError, setInterventionError] = useState<string | null>(null);
   const [copiedIntervention, setCopiedIntervention] = useState(false);
 
   // Rundown report state
@@ -85,259 +105,163 @@ export const TeacherScreen: React.FC = () => {
   // Export Brief notification toast
   const [copiedBriefToast, setCopiedBriefToast] = useState(false);
 
-  // Generate simulated classmates tailored to current world's concepts & misconceptions
+  // Sample classmates (labelled "sample" in the roster), built from this world's own trees and mix-ups.
   const classmates = useMemo<ClassmateData[]>(() => {
     if (!world || world.misconceptions.length === 0) return [];
-
     const m = world.misconceptions;
-    const t = world.trees;
+    const mcq = world.trees.filter((tr) => tr.kind !== 'serve' && tr.choices.length > 1);
+    if (mcq.length === 0) return [];
 
-    const m1 = m[0]?.id || 'm1';
-    const m2 = m[1]?.id || 'm2';
-    const m3 = m[2]?.id || 'm3';
-    const m4 = m[3]?.id || 'm4';
-    const m5 = m[4]?.id || 'm5';
-    const m6 = m[5]?.id || 'm6';
+    // A multiple-choice tree from the grove where a mix-up lives, rather than a fixed index.
+    const treeFor = (mis: MisconceptionData | undefined, nth = 0) => {
+      const inGrove = mcq.filter((tr) => tr.conceptId === mis?.conceptId);
+      return inGrove[nth] ?? inGrove[0] ?? mcq[0];
+    };
+    const wrongChoice = (tree: TreeData, preferred: number) =>
+      preferred !== tree.answerIndex ? preferred : (preferred + 1) % tree.choices.length;
+    const ago = (minutes: number) => Date.now() - minutes * 60_000;
+    const strengths = (values: number[]) => Object.fromEntries(m.map((x, i) => [x.id, values[i] ?? 0]));
 
-    const alexAttempts: QuestionAttempt[] = [
-      {
-        treeId: t[0]?.id || 't1',
-        question: t[0]?.question || 'Simplify fraction',
-        choice: t[0]?.choices[1] || 'Wrong choice',
-        choiceIndex: 1,
+    const wrong = (name: string, mis: MisconceptionData | undefined, thought: string, why: string, minutes: number, extra: Partial<ThoughtProcessRecord> = {}) => {
+      const tree = treeFor(mis);
+      const i = wrongChoice(tree, 0);
+      const attempt: QuestionAttempt = {
+        treeId: tree.id,
+        question: tree.question,
+        choice: tree.choices[i],
+        choiceIndex: i,
         correct: false,
         confidence: 'Very sure',
-        misconceptionId: m2,
-        misconceptionLabel: m[1]?.label || 'divides only the numerator',
-        hint: 'Are you sure? Check what happened to denominator?',
-        thoughtProcess: 'You divided only the top number by 2 and left the bottom number untouched.',
-        prediction: {
-          treeId: t[0]?.id || 't1',
-          pCorrect: 0.25,
-          predictedChoice: 1,
-          misconceptionId: m2,
-          why: 'Alex frequently overlooks converting the denominator.',
-        },
-        predictionHit: 'exact',
-        at: Date.now() - 1000 * 60 * 18,
-        correctAnswer: t[0] ? t[0].choices[t[0].answerIndex] : '',
-      },
-      {
-        treeId: t[1]?.id || 't2',
-        question: t[1]?.question || 'Equivalent fractions',
-        choice: t[1]?.choices[t[1].answerIndex] || 'Correct',
-        choiceIndex: t[1]?.answerIndex ?? 0,
-        correct: true,
-        confidence: 'Fairly sure',
-        misconceptionId: null,
+        misconceptionId: mis?.id ?? null,
+        misconceptionLabel: mis?.label,
         hint: null,
-        prediction: {
-          treeId: t[1]?.id || 't2',
-          pCorrect: 0.65,
-          predictedChoice: t[1]?.answerIndex ?? 0,
-          misconceptionId: null,
-          why: 'Alex understood simplest form with visual diagram.',
-        },
-        predictionHit: 'direction',
-        at: Date.now() - 1000 * 60 * 14,
-        correctAnswer: t[1] ? t[1].choices[t[1].answerIndex] : '',
-      },
-    ];
-
-    const alexFlags: ThoughtProcessRecord[] = [
-      {
-        id: 'flag-alex-1',
-        studentName: 'Alex Chen',
-        treeId: t[0]?.id || 't1',
-        question: t[0]?.question || 'Simplify fraction 4/8',
-        choice: t[0]?.choices[1] || '2/8',
-        misconceptionId: m2,
-        misconceptionLabel: m[1]?.label || 'divides only the numerator',
-        thoughtProcess: 'You divided only the top number by 2 and left the bottom number untouched.',
+        thoughtProcess: thought,
+        prediction: { treeId: tree.id, pCorrect: 0.2, predictedChoice: i, misconceptionId: mis?.id ?? null, why },
+        predictionHit: 'exact',
+        at: ago(minutes),
+        correctAnswer: tree.choices[tree.answerIndex],
+      };
+      const flag: ThoughtProcessRecord = {
+        id: `flag-${name}-${tree.id}`,
+        studentName: name,
+        treeId: tree.id,
+        question: tree.question,
+        choice: tree.choices[i],
+        misconceptionId: mis?.id ?? null,
+        misconceptionLabel: mis?.label,
+        thoughtProcess: thought,
         studentWords: null,
         confirmed: 'yes',
-        at: Date.now() - 1000 * 60 * 18,
-      },
-    ];
+        at: ago(minutes),
+        ...extra,
+      };
+      return { attempt, flag };
+    };
+    const right = (tree: TreeData, pCorrect: number, why: string, minutes: number): QuestionAttempt => ({
+      treeId: tree.id,
+      question: tree.question,
+      choice: tree.choices[tree.answerIndex],
+      choiceIndex: tree.answerIndex,
+      correct: true,
+      confidence: 'Fairly sure',
+      misconceptionId: null,
+      hint: null,
+      prediction: { treeId: tree.id, pCorrect, predictedChoice: tree.answerIndex, misconceptionId: null, why },
+      predictionHit: 'exact',
+      at: ago(minutes),
+      correctAnswer: tree.choices[tree.answerIndex],
+    });
 
-    const marcusAttempts: QuestionAttempt[] = [
-      {
-        treeId: t[4]?.id || 't5',
-        question: t[4]?.question || 'Which is larger: 3/4 or 5/8?',
-        choice: t[4]?.choices[0] || '5/8 because 5 is greater than 3',
-        choiceIndex: 0,
-        correct: false,
-        confidence: 'Very sure',
-        misconceptionId: m3,
-        misconceptionLabel: m[2]?.label || 'compares fractions by numerator alone',
-        hint: 'Are you sure? Check what size each fractional piece is!',
-        thoughtProcess: 'You looked at the numerators: 5 is greater than 3, so 5/8 appeared bigger.',
-        prediction: {
-          treeId: t[4]?.id || 't5',
-          pCorrect: 0.2,
-          predictedChoice: 0,
-          misconceptionId: m3,
-          why: 'Marcus looks only at the numerator 5 vs 3.',
-        },
-        predictionHit: 'exact',
-        at: Date.now() - 1000 * 60 * 16,
-        correctAnswer: t[4]?.choices[t[4].answerIndex] || '',
-      },
-    ];
+    // What the sample classmates said and thought, in the language of this world's subject.
+    const t = isReadingSubject(world.subject) ? SAMPLE_LINES.reading : SAMPLE_LINES.maths;
+    const alex = wrong('Alex Chen', m[1], t.alex[0], t.alex[1], 18);
+    const marcus = wrong('Marcus Rodriguez', m[2], t.marcus[0], t.marcus[1], 16);
+    const zoe = wrong('Zoe Kim', m[4], t.zoe[0], t.zoe[1], 22, {
+      studentWords: t.zoeWords,
+      confirmed: 'no',
+    });
 
-    const marcusFlags: ThoughtProcessRecord[] = [
-      {
-        id: 'flag-marcus-1',
-        studentName: 'Marcus Rodriguez',
-        treeId: t[4]?.id || 't5',
-        question: t[4]?.question || 'Which is larger: 3/4 or 5/8?',
-        choice: '5/8 because 5 > 3',
-        misconceptionId: m3,
-        misconceptionLabel: m[2]?.label || 'compares fractions by numerator alone',
-        thoughtProcess: 'You compared the top numbers 5 and 3, assuming larger numerator always wins.',
-        studentWords: null,
-        confirmed: 'yes',
-        at: Date.now() - 1000 * 60 * 16,
-      },
-    ];
-
-    const zoeAttempts: QuestionAttempt[] = [
-      {
-        treeId: t[8]?.id || 't9',
-        question: t[8]?.question || 'What is 1/2 + 1/3?',
-        choice: t[8]?.choices[0] || '2/5',
-        choiceIndex: 0,
-        correct: false,
-        confidence: 'Very sure',
-        misconceptionId: m5,
-        misconceptionLabel: m[4]?.label || 'adds numerators and denominators separately',
-        hint: 'Are you sure? Check if halves and thirds can be combined directly.',
-        thoughtProcess: 'You added top numbers (1+1=2) and bottom numbers (2+3=5) separately.',
-        prediction: {
-          treeId: t[8]?.id || 't9',
-          pCorrect: 0.15,
-          predictedChoice: 0,
-          misconceptionId: m5,
-          why: 'Student defaults to whole-number addition logic (1+1)/(2+3).',
-        },
-        predictionHit: 'exact',
-        at: Date.now() - 1000 * 60 * 22,
-        correctAnswer: t[8]?.choices[t[8].answerIndex] || '',
-      },
-    ];
-
-    const zoeFlags: ThoughtProcessRecord[] = [
-      {
-        id: 'flag-zoe-1',
-        studentName: 'Zoe Kim',
-        treeId: t[8]?.id || 't9',
-        question: t[8]?.question || 'What is 1/2 + 1/3?',
-        choice: '2/5',
-        misconceptionId: m5,
-        misconceptionLabel: m[4]?.label || 'adds numerators and denominators separately',
-        thoughtProcess: 'You added the numerators 1+1=2 and denominators 2+3=5 separately.',
-        studentWords: 'I thought fractions add straight across like multiplication.',
-        confirmed: 'no',
-        at: Date.now() - 1000 * 60 * 22,
-      },
-    ];
-
-    const sophiaAttempts: QuestionAttempt[] = [
-      {
-        treeId: t[0]?.id || 't1',
-        question: t[0]?.question || 'Simplify fraction 4/8',
-        choice: t[0]?.choices[t[0].answerIndex] || '1/2',
-        choiceIndex: t[0]?.answerIndex ?? 0,
-        correct: true,
-        confidence: 'Very sure',
-        misconceptionId: null,
-        hint: null,
-        prediction: {
-          treeId: t[0]?.id || 't1',
-          pCorrect: 0.88,
-          predictedChoice: t[0]?.answerIndex ?? 0,
-          misconceptionId: null,
-          why: 'Sophia demonstrates strong number sense.',
-        },
-        predictionHit: 'exact',
-        at: Date.now() - 1000 * 60 * 25,
-        correctAnswer: t[0] ? t[0].choices[t[0].answerIndex] : '',
-      },
-      {
-        treeId: t[4]?.id || 't5',
-        question: t[4]?.question || 'Comparing fractions',
-        choice: t[4]?.choices[t[4].answerIndex] || 'Correct',
-        choiceIndex: t[4]?.answerIndex ?? 0,
-        correct: true,
-        confidence: 'Very sure',
-        misconceptionId: null,
-        hint: null,
-        prediction: {
-          treeId: t[4]?.id || 't5',
-          pCorrect: 0.82,
-          predictedChoice: t[4]?.answerIndex ?? 0,
-          misconceptionId: null,
-          why: 'Sophia finds common denominators consistently.',
-        },
-        predictionHit: 'exact',
-        at: Date.now() - 1000 * 60 * 12,
-        correctAnswer: t[4]?.choices[t[4].answerIndex] || '',
-      },
-    ];
+    // What sample classmates said to Mia and how they rated themselves, from this world's own teach spots.
+    const [spot] = validTeachSpots(world);
+    const firstGrove = world.concepts[0]?.id ?? '';
+    const taught = (passed: boolean, words: string, hitIdx: number[], minutes: number): TeachBackRecord[] =>
+      spot
+        ? [
+            {
+              conceptId: spot.conceptId,
+              passed,
+              hit: spot.rubricPoints.filter((_, i) => hitIdx.includes(i)),
+              missing: spot.rubricPoints.filter((_, i) => !hitIdx.includes(i)),
+              words,
+              spoken: false,
+              session,
+              at: ago(minutes),
+            },
+          ]
+        : [];
+    const rated = (rating: Reflection['rating'], accuracy: number, note: string, minutes: number): Reflection[] =>
+      firstGrove ? [{ conceptId: firstGrove, rating, accuracy, note, feedback: judgmentFeedback(rating, accuracy), session, at: ago(minutes) }] : [];
 
     return [
       {
         id: 'student-alex',
         name: 'Alex Chen',
         avatarColor: '#3b82f6',
-        misconceptionStrength: { [m1]: 0, [m2]: 0.8, [m3]: 0.2, [m4]: 0, [m5]: 0.1, [m6]: 0 },
-        activeMisconceptionId: m2,
-        overcomeMisconceptions: [m1],
+        misconceptionStrength: strengths([0, 0.8, 0.2, 0, 0.1, 0]),
+        activeMisconceptionId: m[1]?.id ?? null,
+        overcomeMisconceptions: m[0] ? [m[0].id] : [],
         predictionStats: { exact: 3, direction: 2, miss: 1 },
-        attempts: alexAttempts,
-        flags: alexFlags,
+        attempts: [alex.attempt, right(treeFor(m[0], 1), 0.65, t.alexRight, 14)],
+        flags: [alex.flag],
+        teachBacks: taught(false, t.alexTaught, [], 9),
+        reflections: rated(2, 0.5, t.alexNote, 8),
       },
       {
         id: 'student-sophia',
         name: 'Sophia Patel',
         avatarColor: '#10b981',
-        misconceptionStrength: { [m1]: 0, [m2]: 0, [m3]: 0.1, [m4]: 0, [m5]: 0, [m6]: 0 },
+        misconceptionStrength: strengths([0, 0, 0.1, 0, 0, 0]),
         activeMisconceptionId: null,
-        overcomeMisconceptions: [m1, m2],
+        overcomeMisconceptions: [m[0]?.id, m[1]?.id].filter((id): id is string => !!id),
         predictionStats: { exact: 5, direction: 1, miss: 0 },
-        attempts: sophiaAttempts,
+        attempts: [right(treeFor(m[0]), 0.88, t.sophiaRight[0], 25), right(treeFor(m[2]), 0.82, t.sophiaRight[1], 12)],
         flags: [],
+        teachBacks: spot ? taught(true, `${spot.rubricPoints[0]}. ${spot.rubricPoints[spot.rubricPoints.length - 1]}.`, [0, spot.rubricPoints.length - 1], 11) : [],
+        reflections: rated(4, 1, t.sophiaNote, 10),
       },
       {
         id: 'student-marcus',
         name: 'Marcus Rodriguez',
         avatarColor: '#f59e0b',
-        misconceptionStrength: { [m1]: 0.1, [m2]: 0, [m3]: 0.75, [m4]: 0.3, [m5]: 0, [m6]: 0 },
-        activeMisconceptionId: m3,
+        misconceptionStrength: strengths([0.1, 0, 0.75, 0.3, 0, 0]),
+        activeMisconceptionId: m[2]?.id ?? null,
         overcomeMisconceptions: [],
         predictionStats: { exact: 2, direction: 3, miss: 1 },
-        attempts: marcusAttempts,
-        flags: marcusFlags,
+        attempts: [marcus.attempt],
+        flags: [marcus.flag],
+        reflections: rated(3, 0.4, t.marcusNote, 6),
       },
       {
         id: 'student-zoe',
         name: 'Zoe Kim',
         avatarColor: '#ec4899',
-        misconceptionStrength: { [m1]: 0, [m2]: 0.1, [m3]: 0, [m4]: 0.2, [m5]: 0.85, [m6]: 0.1 },
-        activeMisconceptionId: m5,
+        misconceptionStrength: strengths([0, 0.1, 0, 0.2, 0.85, 0.1]),
+        activeMisconceptionId: m[4]?.id ?? null,
         overcomeMisconceptions: [],
         predictionStats: { exact: 2, direction: 2, miss: 2 },
-        attempts: zoeAttempts,
-        flags: zoeFlags,
+        attempts: [zoe.attempt],
+        flags: [zoe.flag],
       },
     ];
-  }, [world]);
+  }, [world, session]);
 
   // Combine live session student with simulated classmates
   const allStudents = useMemo<ClassmateData[]>(() => {
+    // With a class room open, the class is the students who joined (and sample classmates until there are three).
+    if (room?.role === 'teacher') return [...roster, ...(roster.length < 3 ? classmates : [])];
     const liveStudent: ClassmateData = {
       id: 'student-you',
-      name: 'You (Current Student)',
+      name: 'You (playing now)',
       avatarColor: '#6366f1',
       isLiveStudent: true,
       misconceptionStrength: liveStrengths,
@@ -346,10 +270,24 @@ export const TeacherScreen: React.FC = () => {
       predictionStats: livePredictionStats,
       attempts: liveAttempts,
       flags: liveThoughtRecords,
+      teachBacks: liveTeachBacks,
+      reflections: liveReflections,
     };
 
     return [liveStudent, ...classmates];
-  }, [liveStrengths, liveActiveMisconceptionId, liveOvercomeMisconceptions, livePredictionStats, liveAttempts, liveThoughtRecords, classmates]);
+  }, [
+    liveStrengths,
+    liveActiveMisconceptionId,
+    liveOvercomeMisconceptions,
+    livePredictionStats,
+    liveAttempts,
+    liveThoughtRecords,
+    liveTeachBacks,
+    liveReflections,
+    classmates,
+    room,
+    roster,
+  ]);
 
   const selectedStudent = useMemo(() => {
     return allStudents.find((s) => s.id === selectedStudentId) || allStudents[0];
@@ -385,11 +323,13 @@ export const TeacherScreen: React.FC = () => {
       return t?.conceptId === conceptId;
     });
 
-    if (isOvercome) return { status: 'overcome' as const, strength: 0 };
+    const showedIt = st.attempts.some((a) => a.misconceptionId === misId) || st.flags.some((f) => f.misconceptionId === misId);
+
+    if (isOvercome || (showedIt && strength === 0)) return { status: 'overcome' as const, strength: 0 };
     if (strength >= 0.6) return { status: 'severe' as const, strength };
     if (strength > 0) return { status: 'active' as const, strength };
     if (!hasAttemptForConcept) return { status: 'untested' as const, strength: 0 };
-    return { status: 'overcome' as const, strength: 0 };
+    return { status: 'clear' as const, strength: 0 }; // answered, and never showed this mix-up
   };
 
   const getStudentAccuracy = (st: ClassmateData) => {
@@ -422,6 +362,8 @@ export const TeacherScreen: React.FC = () => {
     setIsLoadingIntervention(true);
     setShowInterventionModal(true);
     setCopiedIntervention(false);
+    setInterventionData(null);
+    setInterventionError(null);
 
     let targetName = '';
     let misconceptionLabel = '';
@@ -446,6 +388,8 @@ export const TeacherScreen: React.FC = () => {
     try {
       const res = await fetch('/api/generate-intervention', {
         method: 'POST',
+        // A stuck request gives up and shows the retry, instead of spinning.
+        signal: AbortSignal.timeout(75_000),
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           targetType,
@@ -461,6 +405,7 @@ export const TeacherScreen: React.FC = () => {
       setInterventionData(data);
     } catch (e) {
       console.error('Intervention error:', e);
+      setInterventionError("Byte couldn't write this lesson plan just now. Try again in a moment.");
     } finally {
       setIsLoadingIntervention(false);
     }
@@ -525,7 +470,7 @@ export const TeacherScreen: React.FC = () => {
       return {
         topMisconceptions: [],
         priorityOrderSummary: 'Quick summary (AI unavailable): Review core concepts.',
-        fullReportMarkdown: '# End of Session Pedagogical Rundown\n*(Quick summary (AI unavailable))*',
+        fullReportMarkdown: '# What to reteach\n*(Quick summary: Gemini was unavailable)*',
       };
     }
 
@@ -543,7 +488,7 @@ export const TeacherScreen: React.FC = () => {
         label: m.label,
         affectedCount: affected.length,
         affectedStudents: affected.map((a) => a.name),
-        quotes: quotes.length > 0 ? quotes : [`Common misconception with ${m.label}`],
+        quotes,
       };
     });
 
@@ -556,8 +501,9 @@ export const TeacherScreen: React.FC = () => {
       affectedStudents: item.affectedStudents.length > 0 ? item.affectedStudents : ['Class general observation'],
       typicalReasoning: item.quotes[0] || `Student assumption regarding ${item.label}`,
       whyReteach: `Addresses foundational misconception affecting ${Math.max(1, item.affectedCount)} student(s) before advancing to complex problems.`,
-      fiveMinuteActivity:
-        item.label.toLowerCase().includes('numerator') || item.label.toLowerCase().includes('denominator')
+      fiveMinuteActivity: isReadingSubject(world.subject)
+        ? 'Give pairs a short paragraph. They underline the clues, then say what the whole paragraph is about in five words.'
+        : item.label.toLowerCase().includes('numerator') || item.label.toLowerCase().includes('denominator')
           ? 'Draw two identical cake circles on paper: divide one into 4 slices and one into 8 slices. Shade 3/4 vs 5/8 to physically verify piece sizes.'
           : item.label.toLowerCase().includes('add')
           ? 'Use colored fractional paper strips (halves and thirds) laid side by side against a whole strip to demonstrate why denominators must match before adding.'
@@ -566,9 +512,11 @@ export const TeacherScreen: React.FC = () => {
 
     const priorityOrderSummary = topMisconceptions.length > 0
       ? `Priority 1 is "${topMisconceptions[0].label}" (affects ${topMisconceptions[0].affectedStudents.join(', ')}). Reteach using concrete physical models before advancing.`
-      : 'Review core foundational concepts with visual fraction models.';
+      : isReadingSubject(world.subject)
+        ? 'Review the grove’s ideas with a short shared reading.'
+        : 'Review core foundational concepts with visual fraction models.';
 
-    let markdown = `# Mastery Grove — End of Session Pedagogical Rundown\n*(Quick summary (AI unavailable))*\n\n`;
+    let markdown = `# Mastery Grove: what to reteach\n*(Quick summary: Gemini was unavailable)*\n\n`;
     markdown += `**Subject:** ${world.subject}\n\n`;
     markdown += `## Executive Priority Summary\n${priorityOrderSummary}\n\n`;
     markdown += `## Top Misconceptions & Reteach Plan\n`;
@@ -614,7 +562,7 @@ export const TeacherScreen: React.FC = () => {
           label: m.label,
           affectedCount: affected.length,
           affectedStudents: affected.map((a) => a.name),
-          quotes: quotes.length > 0 ? quotes : [`Common misconception with ${m.label}`],
+          quotes,
         };
       });
 
@@ -658,16 +606,16 @@ export const TeacherScreen: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen w-full bg-slate-950 text-slate-100 flex flex-col p-4 sm:p-8 select-none">
+    <div className="min-h-dvh w-full bg-[#efe6d2] text-ink flex flex-col p-4 sm:p-8">
       <div className="max-w-6xl mx-auto w-full space-y-6">
         {/* Navigation Bar */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-paper-edge pb-4">
           <button
             onClick={() => setScreen('game')}
             data-testid="back-to-forest-btn"
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 text-xs font-bold transition-all border border-slate-700 shadow-md hover:shadow-lg w-fit"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-paper-deep hover:bg-paper-edge text-ink text-xs font-bold transition-all border border-paper-edge shadow-md hover:shadow-[0_3px_0_var(--color-paper-edge)] w-fit"
           >
-            <ArrowLeft className="w-4 h-4 text-emerald-400" />
+            <ArrowLeft className="w-4 h-4 text-leaf-deep" />
             <span>Back to the forest</span>
           </button>
 
@@ -676,70 +624,92 @@ export const TeacherScreen: React.FC = () => {
             <button
               onClick={handleExportBrief}
               data-testid="export-brief-btn"
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-bold transition-all border border-slate-700 shadow-md"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-paper-deep hover:bg-paper-edge text-ink hover:text-ink text-xs font-bold transition-all border border-paper-edge shadow-md"
               title="Copy markdown summary of class misconceptions"
             >
-              {copiedBriefToast ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4 text-slate-400" />}
-              <span>{copiedBriefToast ? 'Copied Brief!' : 'Export Brief'}</span>
+              {copiedBriefToast ? <Check className="w-4 h-4 text-leaf-deep" /> : <Copy className="w-4 h-4 text-ink-soft" />}
+              <span>{copiedBriefToast ? 'Copied!' : 'Copy brief'}</span>
+            </button>
+
+            {/* Next session: trees due for a memory check come back as the Memory Quest */}
+            <button
+              onClick={() => {
+                startClassSession();
+                setSessionStarted(true);
+                setTimeout(() => setSessionStarted(false), 2500);
+              }}
+              data-testid="next-session-btn"
+              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-paper border border-paper-edge hover:bg-paper-deep text-ink text-xs font-bold transition-all shadow-[0_3px_0_var(--color-paper-edge)]"
+            >
+              <RefreshCw className="w-4 h-4" />
+              <span>{sessionStarted ? `Session ${session} started` : 'Start next session'}</span>
             </button>
 
             {/* End of session rundown button */}
             <button
               onClick={handleGenerateRundown}
               data-testid="rundown-btn"
-              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all shadow-md"
+              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-sun hover:brightness-105 text-ink text-xs font-bold transition-all shadow-md"
             >
               <FileText className="w-4 h-4" />
-              <span>End of session rundown</span>
+              <span>What to reteach</span>
             </button>
 
-            <div className="flex items-center gap-2 pl-2 border-l border-slate-800">
-              <div className="w-8 h-8 rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-400/30 flex items-center justify-center shadow-xs">
+            <div className="flex items-center gap-2 pl-2 border-l border-paper-edge">
+              <div className="w-8 h-8 rounded-xl bg-sun text-leaf-deep border border-paper-edge flex items-center justify-center shadow-xs">
                 <GraduationCap className="w-5 h-5" />
               </div>
               <div>
-                <span className="text-xs font-bold uppercase tracking-wider text-indigo-400 block leading-none">
+                <span className="text-xs font-bold uppercase tracking-wider text-leaf-deep block leading-none">
                   Teacher View
                 </span>
-                <span className="text-[11px] text-slate-400">
-                  Adaptive Cognitive Briefing
+                <span className="text-[11px] text-ink-soft">
+                  What your class is thinking
                 </span>
               </div>
             </div>
           </div>
         </div>
 
+        <ClassRoomPanel
+          code={room?.role === 'teacher' ? room.code : null}
+          status={room?.status ?? null}
+          students={roomPlayers.filter((p) => p.role === 'student' && p.connected).length}
+          error={roomError}
+          onOpen={() => openClassRoom('Teacher')}
+          onClose={leaveClassRoom}
+        />
+
         {/* Global Toast if Quest Deployed or Sprout Planted */}
         {teacherToast && (
-          <div className="p-3 bg-purple-950/80 border border-purple-500 rounded-2xl text-xs text-purple-200 flex items-center gap-2 animate-in fade-in">
-            <Sparkles className="w-4 h-4 text-purple-400 shrink-0" />
+          <div className="p-3 bg-paper-deep border border-paper-edge rounded-2xl text-xs text-leaf-deep flex items-center gap-2 rise-in">
             <span className="font-semibold">{teacherToast}</span>
           </div>
         )}
 
         {/* Tabs: Heatmap vs Live Flags Feed */}
-        <div className="flex items-center gap-2 bg-slate-900/60 p-1.5 rounded-2xl border border-slate-800 max-w-sm">
+        <div className="flex items-center gap-2 bg-paper p-1.5 rounded-2xl border border-paper-edge max-w-sm">
           <button
             type="button"
             data-testid="tab-heatmap"
             onClick={() => setActiveTab('heatmap')}
             className={`flex-1 py-2 px-3 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 ${
-              activeTab === 'heatmap' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
+              activeTab === 'heatmap' ? 'bg-sun text-ink shadow-sm' : 'text-ink-soft hover:text-ink'
             }`}
           >
             <Activity className="w-3.5 h-3.5" />
-            <span>Misconception Map</span>
+            <span>Class map</span>
           </button>
           <button
             type="button"
             data-testid="tab-flags"
             onClick={() => setActiveTab('flags')}
             className={`flex-1 py-2 px-3 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 ${
-              activeTab === 'flags' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
+              activeTab === 'flags' ? 'bg-sun text-ink shadow-sm' : 'text-ink-soft hover:text-ink'
             }`}
           >
-            <Flag className="w-3.5 h-3.5 text-amber-400" />
-            <span>Flags Feed ({allFlags.length})</span>
+            <Flag className="w-3.5 h-3.5 text-sun-deep" />
+            <span>Just flagged ({allFlags.length})</span>
           </button>
         </div>
 
@@ -748,11 +718,11 @@ export const TeacherScreen: React.FC = () => {
             {/* Class Roster Selector Tabs */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                  <Users className="w-3.5 h-3.5 text-indigo-400" />
-                  Class Roster
+                <label className="text-xs font-bold uppercase tracking-wider text-ink-soft flex items-center gap-1.5">
+                  <Users className="w-3.5 h-3.5 text-leaf-deep" />
+                  Your class
                 </label>
-                <span className="text-[11px] text-slate-400">Click a student to view diagnosis or generate intervention</span>
+                <span className="text-[11px] text-ink-soft">Pick a student to see their thinking</span>
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
@@ -763,8 +733,8 @@ export const TeacherScreen: React.FC = () => {
                       key={st.id}
                       className={`p-3 rounded-2xl border text-left transition-all relative overflow-hidden flex flex-col justify-between ${
                         isSelected
-                          ? 'bg-indigo-950/80 border-indigo-500 ring-2 ring-indigo-400/30 shadow-lg'
-                          : 'bg-slate-900/80 border-slate-800 hover:bg-slate-800/80 text-slate-300'
+                          ? 'bg-paper-deep border-paper-edge ring-2 ring-sun shadow-[0_3px_0_var(--color-paper-edge)]'
+                          : 'bg-paper border-paper-edge hover:bg-paper-deep text-ink-soft'
                       }`}
                     >
                       <button
@@ -774,29 +744,29 @@ export const TeacherScreen: React.FC = () => {
                         className="w-full text-left"
                       >
                         <div className="flex items-start justify-between gap-1 mb-1.5">
-                          <span className="font-bold text-xs truncate text-white">{st.name}</span>
+                          <span className="font-bold text-xs truncate text-ink">{st.name}</span>
                           {!st.isLiveStudent && (
-                            <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-slate-800 text-slate-400 border border-slate-700 shrink-0 font-medium">
-                              sample data
+                            <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-paper-deep text-ink-soft border border-paper-edge shrink-0 font-medium">
+                              sample
                             </span>
                           )}
                           {st.isLiveStudent && (
-                            <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-blue-950 text-blue-300 border border-blue-700 shrink-0 font-bold animate-pulse">
+                            <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-paper-deep text-leaf-deep border border-paper-edge shrink-0 font-bold animate-pulse">
                               Live
                             </span>
                           )}
                         </div>
 
-                        <div className="text-[11px] text-slate-400 space-y-0.5">
+                        <div className="text-[11px] text-ink-soft space-y-0.5">
                           <div>
-                            Accuracy: <strong className="text-slate-200">{getStudentAccuracy(st)}</strong>
+                            Accuracy: <strong className="text-ink">{getStudentAccuracy(st)}</strong>
                           </div>
                           <div className="truncate">
                             Active:{' '}
                             {st.activeMisconceptionId ? (
-                              <span className="text-amber-400 font-semibold">{st.activeMisconceptionId.toUpperCase()}</span>
+                              <span className="text-sun-deep font-semibold">{st.activeMisconceptionId.toUpperCase()}</span>
                             ) : (
-                              <span className="text-emerald-400 font-bold">Clear</span>
+                              <span className="text-leaf-deep font-bold">Clear</span>
                             )}
                           </div>
                         </div>
@@ -807,10 +777,9 @@ export const TeacherScreen: React.FC = () => {
                         type="button"
                         onClick={() => handleGenerateIntervention('student', st.id)}
                         data-testid={`intervention-student-${st.id}`}
-                        className="mt-2 pt-1.5 border-t border-slate-800/80 w-full inline-flex items-center justify-center gap-1 text-[10px] font-bold text-indigo-400 hover:text-indigo-300 transition-colors"
+                        className="mt-2 pt-1.5 border-t border-paper-edge w-full inline-flex items-center justify-center gap-1 text-[10px] font-bold text-leaf-deep hover:text-leaf-deep transition-colors"
                       >
-                        <Sparkles className="w-3 h-3 text-indigo-400" />
-                        <span>Plan Intervention</span>
+                        <span>Plan help</span>
                       </button>
                     </div>
                   );
@@ -819,30 +788,33 @@ export const TeacherScreen: React.FC = () => {
             </div>
 
             {/* Misconception Map Matrix */}
-            <div className="p-6 rounded-3xl bg-slate-900/80 border border-slate-800 shadow-xl space-y-4">
+            <div className="p-6 rounded-3xl bg-paper border border-paper-edge shadow-[0_3px_0_var(--color-paper-edge)] space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
-                  <Activity className="w-5 h-5 text-amber-400" />
+                  <Activity className="w-5 h-5 text-sun-deep" />
                   <div>
-                    <h2 className="text-sm font-bold text-white">Class Misconception Map</h2>
-                    <p className="text-xs text-slate-400">
-                      Click any cell to inspect the student’s thinking process and trigger a targeted lesson plan.
+                    <h2 className="text-sm font-bold text-ink">Mix-ups across the class</h2>
+                    <p className="text-xs text-ink-soft">
+                      Tap a box to see what that student was thinking.
                     </p>
                   </div>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3 text-[11px]">
                   <span className="flex items-center gap-1">
-                    <span className="w-3 h-3 rounded-xs bg-emerald-950 border border-emerald-500" /> Green = Overcome
+                    <span className="w-3 h-3 rounded-xs bg-leaf-soft border border-leaf/40" /> Green = Overcome
                   </span>
                   <span className="flex items-center gap-1">
-                    <span className="w-3 h-3 rounded-xs bg-amber-950 border border-amber-500" /> Yellow = Active
+                    <span className="w-3 h-3 rounded-xs bg-sun-soft border border-sun" /> Yellow = Active
                   </span>
                   <span className="flex items-center gap-1">
-                    <span className="w-3 h-3 rounded-xs bg-rose-950 border border-rose-500" /> Red = Severe (≥60%)
+                    <span className="w-3 h-3 rounded-xs bg-berry-soft border border-berry/50" /> Red = Severe (≥60%)
                   </span>
                   <span className="flex items-center gap-1">
-                    <span className="w-3 h-3 rounded-xs bg-slate-800 border border-slate-700" /> Gray = Untested
+                    <span className="w-3 h-3 rounded-xs bg-paper-deep border border-paper-edge" /> Gray = Untested
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="w-3 h-3 rounded-xs bg-paper border border-leaf/30" /> Clear = answered, no mix-up
                   </span>
                 </div>
               </div>
@@ -850,11 +822,11 @@ export const TeacherScreen: React.FC = () => {
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
-                    <tr className="border-b border-slate-800 text-slate-400">
+                    <tr className="border-b border-paper-edge text-ink-soft">
                       <th className="py-2.5 px-3 font-semibold min-w-[220px]">Misconception</th>
                       {allStudents.map((st) => (
                         <th key={st.id} className="py-2.5 px-2 font-semibold text-center min-w-[90px]">
-                          <span className={st.id === selectedStudentId ? 'text-indigo-300 font-bold' : ''}>
+                          <span className={st.id === selectedStudentId ? 'text-leaf-deep font-bold' : ''}>
                             {st.name.split(' ')[0]}
                           </span>
                         </th>
@@ -863,7 +835,7 @@ export const TeacherScreen: React.FC = () => {
                       <th className="py-2.5 px-3 font-semibold text-right min-w-[170px]">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-800/60">
+                  <tbody className="divide-y divide-paper-edge">
                     {world?.misconceptions.map((mis) => {
                       let severeCount = 0;
                       let activeCount = 0;
@@ -876,12 +848,12 @@ export const TeacherScreen: React.FC = () => {
                       const isDeploying = deployingMisId === mis.id;
 
                       return (
-                        <tr key={mis.id} className="hover:bg-slate-800/30 transition-colors">
+                        <tr key={mis.id} className="hover:bg-paper-deep transition-colors">
                           <td className="py-2.5 px-3">
-                            <span className="font-bold text-amber-400 mr-2 text-[11px]">
+                            <span className="font-bold text-sun-deep mr-2 text-[11px]">
                               {mis.id.toUpperCase()}
                             </span>
-                            <span className="text-slate-200">{mis.label}</span>
+                            <span className="text-ink">{mis.label}</span>
                           </td>
 
                           {allStudents.map((st) => {
@@ -889,17 +861,20 @@ export const TeacherScreen: React.FC = () => {
                             const isCurrentCol = st.id === selectedStudentId;
 
                             let cellBadge = 'Untested';
-                            let cellClass = 'bg-slate-900/60 text-slate-500 border-slate-800';
+                            let cellClass = 'bg-paper text-ink-soft border-paper-edge';
 
-                            if (status === 'overcome') {
+                            if (status === 'clear') {
+                              cellBadge = 'Clear';
+                              cellClass = 'bg-paper text-leaf-deep border-leaf/30';
+                            } else if (status === 'overcome') {
                               cellBadge = 'Overcome ✓';
-                              cellClass = 'bg-emerald-950/70 text-emerald-300 border-emerald-600/60 font-bold';
+                              cellClass = 'bg-leaf-soft text-leaf-deep border-leaf/40 font-bold';
                             } else if (status === 'severe') {
                               cellBadge = `Severe ${Math.round(strength * 100)}%`;
-                              cellClass = 'bg-rose-950/90 text-rose-200 border-rose-500/80 font-extrabold ring-1 ring-rose-500/30';
+                              cellClass = 'bg-berry-soft text-berry-deep border-berry/50 font-extrabold ring-1 ring-berry/40';
                             } else if (status === 'active') {
                               cellBadge = `Active ${Math.round(strength * 100)}%`;
-                              cellClass = 'bg-amber-950/70 text-amber-300 border-amber-600/60 font-bold';
+                              cellClass = 'bg-sun-soft text-sun-deep border-sun font-bold';
                             }
 
                             return (
@@ -909,7 +884,7 @@ export const TeacherScreen: React.FC = () => {
                                   onClick={() => setSelectedCell({ student: st, misconception: mis, status, strength })}
                                   data-testid={`cell-${st.id}-${mis.id}`}
                                   className={`w-full py-1.5 px-1 rounded-lg border text-[11px] transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-xs ${cellClass} ${
-                                    isCurrentCol ? 'ring-1 ring-indigo-400' : ''
+                                    isCurrentCol ? 'ring-1 ring-sun' : ''
                                   }`}
                                   title={`Click to view ${st.name}'s thought processes for ${mis.id.toUpperCase()}`}
                                 >
@@ -923,10 +898,10 @@ export const TeacherScreen: React.FC = () => {
                             <span
                               className={`inline-block px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
                                 severeCount > 0
-                                  ? 'bg-rose-950 text-rose-300 border border-rose-800'
+                                  ? 'bg-berry-soft text-berry-deep border border-berry/50'
                                   : activeCount > 0
-                                  ? 'bg-amber-950 text-amber-300 border border-amber-800'
-                                  : 'bg-emerald-950 text-emerald-400 border border-emerald-800'
+                                  ? 'bg-sun-soft text-sun-deep border border-sun'
+                                  : 'bg-leaf-soft text-leaf-deep border border-leaf/40'
                               }`}
                             >
                               {severeCount > 0 ? `${severeCount} Severe` : activeCount > 0 ? `${activeCount} Active` : 'Clear'}
@@ -940,11 +915,10 @@ export const TeacherScreen: React.FC = () => {
                                 type="button"
                                 onClick={() => handleGenerateIntervention('misconception', mis.id)}
                                 data-testid={`intervention-mis-${mis.id}`}
-                                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-indigo-300 rounded-xl text-[11px] font-bold border border-slate-700 transition-all shadow-xs"
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-paper-deep hover:bg-paper-edge text-leaf-deep rounded-xl text-[11px] font-bold border border-paper-edge transition-all shadow-xs"
                                 title="Generate targeted mini-lesson & 5-minute activity for this misconception"
                               >
-                                <Sparkles className="w-3 h-3 text-indigo-400" />
-                                <span>Intervention</span>
+                                <span>Lesson plan</span>
                               </button>
 
                               <button
@@ -952,13 +926,9 @@ export const TeacherScreen: React.FC = () => {
                                 onClick={() => handleDeployQuest(mis.id)}
                                 disabled={isDeploying}
                                 data-testid={`deploy-quest-${mis.id}`}
-                                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-purple-700 hover:bg-purple-600 disabled:opacity-50 text-white rounded-xl text-[11px] font-bold transition-all shadow-xs"
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-sun hover:brightness-105 disabled:opacity-50 text-ink rounded-xl text-[11px] font-bold transition-all shadow-xs"
                               >
-                                {isDeploying ? (
-                                  <RefreshCw className="w-3 h-3 animate-spin" />
-                                ) : (
-                                  <Sparkles className="w-3 h-3 text-purple-300" />
-                                )}
+                                {isDeploying && <RefreshCw className="w-3 h-3 animate-spin" />}
                                 <span>Deploy Quest</span>
                               </button>
                             </div>
@@ -972,26 +942,26 @@ export const TeacherScreen: React.FC = () => {
             </div>
 
             {/* Selected Student Metrics & Calibration Dashboard */}
-            <div className="p-6 rounded-3xl bg-slate-900/80 border border-slate-800 shadow-xl space-y-5">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-4">
+            <div className="p-6 rounded-3xl bg-paper border border-paper-edge shadow-[0_3px_0_var(--color-paper-edge)] space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-paper-edge pb-4">
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="text-base sm:text-lg font-bold text-white">
+                    <span className="text-base sm:text-lg font-bold text-ink">
                       {selectedStudent.name}
                     </span>
                     {!selectedStudent.isLiveStudent && (
-                      <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-md bg-slate-800 text-slate-400 border border-slate-700">
-                        Sample Data
+                      <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-md bg-paper-deep text-ink-soft border border-paper-edge">
+                        Sample
                       </span>
                     )}
                     {selectedStudent.isLiveStudent && (
-                      <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-md bg-blue-900 text-blue-200 border border-blue-600 font-bold">
+                      <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-md bg-paper-deep text-leaf-deep border border-paper-edge font-bold">
                         Live Session
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-slate-400">
-                    Calibration ratio, accuracy score, and cognitive thought-process audits
+                  <p className="text-xs text-ink-soft">
+                    How sure they were, how often they were right, and what they were thinking
                   </p>
                 </div>
 
@@ -999,63 +969,62 @@ export const TeacherScreen: React.FC = () => {
                   type="button"
                   onClick={() => handleGenerateIntervention('student', selectedStudent.id)}
                   data-testid="generate-student-intervention-btn"
-                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-sun hover:brightness-105 text-ink rounded-xl text-xs font-bold transition-all shadow-sm"
                 >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>Generate Intervention for {selectedStudent.name.split(' ')[0]}</span>
+                  <span>Lesson plan for {selectedStudent.name.split(' ')[0]}</span>
                 </button>
               </div>
 
               {/* 4 Metrics Cards */}
               <div className="grid grid-cols-1 sm:grid-cols-4 gap-3.5">
-                <div className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800 space-y-1">
-                  <span className="text-xs text-slate-400 flex items-center gap-1.5">
-                    <Target className="w-3.5 h-3.5 text-blue-400" />
+                <div className="p-4 rounded-2xl bg-paper-deep border border-paper-edge space-y-1">
+                  <span className="text-xs text-ink-soft flex items-center gap-1.5">
+                    <Target className="w-3.5 h-3.5 text-leaf-deep" />
                     Accuracy
                   </span>
-                  <p className="text-lg font-extrabold text-white">{getStudentAccuracy(selectedStudent)}</p>
-                  <span className="text-[11px] text-slate-500 block">Total questions mastered</span>
+                  <p className="text-lg font-extrabold text-ink">{getStudentAccuracy(selectedStudent)}</p>
+                  <span className="text-[11px] text-ink-soft block">Answered right</span>
                 </div>
 
-                <div className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800 space-y-1">
-                  <span className="text-xs text-slate-400 flex items-center gap-1.5">
-                    <Award className="w-3.5 h-3.5 text-amber-400" />
+                <div className="p-4 rounded-2xl bg-paper-deep border border-paper-edge space-y-1">
+                  <span className="text-xs text-ink-soft flex items-center gap-1.5">
+                    <Award className="w-3.5 h-3.5 text-sun-deep" />
                     Calibration
                   </span>
-                  <p className="text-lg font-extrabold text-amber-300">{getStudentCalibration(selectedStudent)}</p>
-                  <span className="text-[11px] text-slate-500 block">"Very sure" answers that were correct</span>
+                  <p className="text-lg font-extrabold text-sun-deep">{getStudentCalibration(selectedStudent)}</p>
+                  <span className="text-[11px] text-ink-soft block">"Very sure" answers that were correct</span>
                 </div>
 
-                <div className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800 space-y-1">
-                  <span className="text-xs text-slate-400 flex items-center gap-1.5">
-                    <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
-                    Active Misconception
+                <div className="p-4 rounded-2xl bg-paper-deep border border-paper-edge space-y-1">
+                  <span className="text-xs text-ink-soft flex items-center gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5 text-berry-deep" />
+                    Current mix-up
                   </span>
-                  <p className="text-sm font-bold truncate text-white">
+                  <p className="text-sm font-bold truncate text-ink">
                     {selectedStudent.activeMisconceptionId ? (
-                      <span className="text-rose-400">
+                      <span className="text-berry-deep">
                         {selectedStudent.activeMisconceptionId.toUpperCase()}:{' '}
                         {world?.misconceptions.find((m) => m.id === selectedStudent.activeMisconceptionId)?.label || 'Detected'}
                       </span>
                     ) : (
-                      <span className="text-emerald-400 font-bold">None (Clear)</span>
+                      <span className="text-leaf-deep font-bold">None (Clear)</span>
                     )}
                   </p>
-                  <span className="text-[11px] text-slate-500 block">Strongest idea &gt; 30% resistance</span>
+                  <span className="text-[11px] text-ink-soft block">Their strongest mix-up right now</span>
                 </div>
 
-                <div className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800 space-y-1">
-                  <span className="text-xs text-slate-400 flex items-center gap-1.5">
-                    <BrainCircuit className="w-3.5 h-3.5 text-indigo-400" />
-                    Tutor Prediction Score
+                <div className="p-4 rounded-2xl bg-paper-deep border border-paper-edge space-y-1">
+                  <span className="text-xs text-ink-soft flex items-center gap-1.5">
+                    <BrainCircuit className="w-3.5 h-3.5 text-leaf-deep" />
+                    Byte's guesses
                   </span>
                   <div className="flex items-baseline gap-2">
-                    <span className="text-lg font-extrabold text-indigo-200">
+                    <span className="text-lg font-extrabold text-leaf-deep">
                       {selectedStudent.predictionStats.exact + selectedStudent.predictionStats.direction} /{' '}
                       {selectedStudent.predictionStats.exact + selectedStudent.predictionStats.direction + selectedStudent.predictionStats.miss}
                     </span>
                   </div>
-                  <div className="text-[10px] text-slate-400 flex gap-2">
+                  <div className="text-[10px] text-ink-soft flex gap-2">
                     <span>{selectedStudent.predictionStats.exact} exact</span>
                     <span>•</span>
                     <span>{selectedStudent.predictionStats.direction} direction</span>
@@ -1065,18 +1034,20 @@ export const TeacherScreen: React.FC = () => {
                 </div>
               </div>
 
+              <OwnWords student={selectedStudent} world={world} />
+
               {/* "Predicted vs Actual" Log */}
               <div className="space-y-3 pt-2">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-                    <BrainCircuit className="w-4 h-4 text-indigo-400" />
-                    "Predicted vs Actual" Cognitive Log ({selectedStudent.attempts.length})
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-ink-soft flex items-center gap-1.5">
+                    <BrainCircuit className="w-4 h-4 text-leaf-deep" />
+                    Byte's guess vs what happened ({selectedStudent.attempts.length})
                   </h3>
-                  <span className="text-[11px] text-slate-500">Latest attempt at top</span>
+                  <span className="text-[11px] text-ink-soft">Latest attempt at top</span>
                 </div>
 
                 {selectedStudent.attempts.length === 0 ? (
-                  <div className="py-8 text-center text-xs text-slate-500 border border-dashed border-slate-800 rounded-2xl">
+                  <div className="py-8 text-center text-xs text-ink-soft border border-dashed border-paper-edge rounded-2xl">
                     No questions attempted yet by {selectedStudent.name}.
                   </div>
                 ) : (
@@ -1084,15 +1055,15 @@ export const TeacherScreen: React.FC = () => {
                     {selectedStudent.attempts.map((att, idx) => {
                       const hit = att.predictionHit;
                       return (
-                        <div key={idx} className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800 text-xs space-y-2">
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 border-b border-slate-800/80 pb-2">
-                            <span className="font-bold text-white text-sm">{att.question}</span>
+                        <div key={idx} className="p-4 rounded-2xl bg-paper-deep border border-paper-edge text-xs space-y-2">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 border-b border-paper-edge pb-2">
+                            <span className="font-bold text-ink text-sm">{att.question}</span>
                             <div className="flex items-center gap-2 shrink-0">
                               <span
                                 className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
                                   att.correct
-                                    ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
-                                    : 'bg-rose-950 text-rose-300 border border-rose-800'
+                                    ? 'bg-leaf-soft text-leaf-deep border border-leaf/40'
+                                    : 'bg-berry-soft text-berry-deep border border-berry/50'
                                 }`}
                               >
                                 {att.correct ? <>✓ Correct</> : <>✗ Withered</>}
@@ -1101,60 +1072,53 @@ export const TeacherScreen: React.FC = () => {
                                 <span
                                   className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
                                     hit === 'exact'
-                                      ? 'bg-indigo-950 text-indigo-300 border border-indigo-700'
+                                      ? 'bg-paper-deep text-leaf-deep border border-paper-edge'
                                       : hit === 'direction'
-                                      ? 'bg-sky-950 text-sky-300 border border-sky-800'
-                                      : 'bg-slate-800 text-slate-400 border border-slate-700'
+                                      ? 'bg-paper-deep text-leaf-deep border border-paper-edge'
+                                      : 'bg-paper-deep text-ink-soft border border-paper-edge'
                                   }`}
                                 >
-                                  {hit === 'exact' && 'Prediction: exact ✓'}
-                                  {hit === 'direction' && 'Prediction: right direction ✓'}
-                                  {hit === 'miss' && 'Prediction: missed ✗'}
+                                  {hit === 'exact' && 'Byte guessed it exactly'}
+                                  {hit === 'direction' && 'Byte was close'}
+                                  {hit === 'miss' && 'Byte guessed wrong'}
                                 </span>
                               )}
                             </div>
                           </div>
 
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
-                            <div className="p-2.5 rounded-xl bg-indigo-950/30 border border-indigo-800/30 space-y-1">
-                              <span className="text-[10px] uppercase font-bold text-indigo-400 block">
-                                Tutor Prediction:
+                            <div className="p-2.5 rounded-xl bg-paper-deep border border-paper-edge space-y-1">
+                              <span className="text-[10px] uppercase font-bold text-leaf-deep block">
+                                Byte guessed:
                               </span>
                               {att.prediction ? (
-                                <div className="text-[11px] text-indigo-200">
-                                  <p className="font-semibold text-white">
+                                <div className="text-[11px] text-leaf-deep">
+                                  <p className="font-semibold text-ink">
                                     {att.prediction.pCorrect >= 0.5
                                       ? `Predicted Correct (${Math.round(att.prediction.pCorrect * 100)}%)`
                                       : `Predicted Distractor: "${world?.trees.find((t) => t.id === att.treeId)?.choices[att.prediction.predictedChoice] || 'Choice'}"`}
                                   </p>
-                                  <p className="text-indigo-300/80 italic mt-0.5">"{att.prediction.why}"</p>
+                                  <p className="text-leaf-deep italic mt-0.5">"{att.prediction.why}"</p>
                                 </div>
                               ) : (
-                                <div className="text-[11px] text-indigo-200">
-                                  <p className="font-semibold text-white">
-                                    Predicted from common grade-level misconceptions
-                                  </p>
-                                  <p className="text-indigo-300/80 italic mt-0.5">
-                                    "Predicted student may default to intuitive numerator comparison or whole-number addition before calibration."
-                                  </p>
-                                </div>
+                                <p className="text-[11px] font-semibold text-ink-soft">Byte didn't guess this one.</p>
                               )}
                             </div>
 
-                            <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 space-y-1">
-                              <span className="text-[10px] uppercase font-bold text-slate-400 block">
-                                Actual Response:
+                            <div className="p-2.5 rounded-xl bg-paper border border-paper-edge space-y-1">
+                              <span className="text-[10px] uppercase font-bold text-ink-soft block">
+                                What happened:
                               </span>
-                              <div className="text-[11px] text-slate-200">
-                                <p>Chosen: <strong className="text-white font-semibold">"{att.choice}"</strong></p>
-                                <p className="text-slate-400">Confidence: <strong className="text-amber-300">{att.confidence}</strong></p>
+                              <div className="text-[11px] text-ink">
+                                <p>Chosen: <strong className="text-ink font-semibold">"{att.choice}"</strong></p>
+                                <p className="text-ink-soft">Confidence: <strong className="text-sun-deep">{att.confidence}</strong></p>
                               </div>
                             </div>
                           </div>
 
                           {att.thoughtProcess && (
-                            <div className="p-2.5 rounded-xl bg-amber-950/20 border border-amber-800/40 text-[11px] text-amber-200">
-                              <strong>Diagnosed Thought Process:</strong> "{att.thoughtProcess}"
+                            <div className="p-2.5 rounded-xl bg-sun-soft border border-sun text-[11px] text-sun-deep">
+                              <strong>What they were thinking:</strong> "{att.thoughtProcess}"
                             </div>
                           )}
                         </div>
@@ -1169,27 +1133,27 @@ export const TeacherScreen: React.FC = () => {
 
         {/* Tab 2: Live Flags Feed */}
         {activeTab === 'flags' && (
-          <div className="p-6 rounded-3xl bg-slate-900/80 border border-slate-800 shadow-xl space-y-5">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
+          <div className="p-6 rounded-3xl bg-paper border border-paper-edge shadow-[0_3px_0_var(--color-paper-edge)] space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-paper-edge pb-4">
               <div>
-                <h2 className="text-base font-bold text-white flex items-center gap-2">
-                  <Flag className="w-5 h-5 text-amber-400" />
-                  Live Flags Feed
+                <h2 className="text-base font-bold text-ink flex items-center gap-2">
+                  <Flag className="w-5 h-5 text-sun-deep" />
+                  Just flagged
                 </h2>
-                <p className="text-xs text-slate-400">
+                <p className="text-xs text-ink-soft">
                   Live stream of student thought processes diagnosed today. Filterable by misconception.
                 </p>
               </div>
 
-              <span className="text-xs font-semibold px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 w-fit">
+              <span className="text-xs font-semibold px-3 py-1 rounded-full bg-sun text-sun-deep border border-sun w-fit">
                 {filteredFlags.length} Events Displayed
               </span>
             </div>
 
             {/* Misconception Filter Pills */}
             <div className="space-y-2">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                <Filter className="w-3.5 h-3.5 text-indigo-400" />
+              <span className="text-[11px] font-bold text-ink-soft uppercase tracking-wider flex items-center gap-1.5">
+                <Filter className="w-3.5 h-3.5 text-leaf-deep" />
                 Filter by Misconception:
               </span>
               <div className="flex flex-wrap gap-2">
@@ -1199,8 +1163,8 @@ export const TeacherScreen: React.FC = () => {
                   onClick={() => setSelectedFlagFilter('all')}
                   className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
                     selectedFlagFilter === 'all'
-                      ? 'bg-indigo-600 text-white border-indigo-500 shadow-sm'
-                      : 'bg-slate-800/80 text-slate-300 border-slate-700 hover:bg-slate-750'
+                      ? 'bg-sun text-ink border-paper-edge shadow-sm'
+                      : 'bg-paper-deep text-ink-soft border-paper-edge hover:bg-paper-edge'
                   }`}
                 >
                   All Misconceptions ({allFlags.length})
@@ -1216,8 +1180,8 @@ export const TeacherScreen: React.FC = () => {
                       onClick={() => setSelectedFlagFilter(mis.id)}
                       className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border flex items-center gap-1.5 ${
                         isSelected
-                          ? 'bg-indigo-600 text-white border-indigo-500 shadow-sm'
-                          : 'bg-slate-800/80 text-slate-300 border-slate-700 hover:bg-slate-750'
+                          ? 'bg-sun text-ink border-paper-edge shadow-sm'
+                          : 'bg-paper-deep text-ink-soft border-paper-edge hover:bg-paper-edge'
                       }`}
                     >
                       <span>{mis.id.toUpperCase()}</span>
@@ -1229,20 +1193,20 @@ export const TeacherScreen: React.FC = () => {
             </div>
 
             {filteredFlags.length === 0 ? (
-              <div className="py-12 text-center text-xs text-slate-500 border border-dashed border-slate-800 rounded-2xl">
-                No thought processes found matching this filter. When students answer incorrectly, their diagnosed reasoning will stream here!
+              <div className="py-12 text-center text-xs text-ink-soft border border-dashed border-paper-edge rounded-2xl">
+                Nothing here yet. When a student gets one wrong, what they were thinking shows up here.
               </div>
             ) : (
               <div className="space-y-3">
                 {filteredFlags.map((flag) => (
                   <div
                     key={flag.id}
-                    className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 hover:border-slate-700 transition-all space-y-2.5"
+                    className="p-4 rounded-2xl bg-paper-deep border border-paper-edge hover:border-paper-edge transition-all space-y-2.5"
                   >
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
                       <div className="flex items-center gap-2">
-                        <span className="font-bold text-sm text-white">{flag.studentName || 'Student'}</span>
-                        <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-amber-950 text-amber-300 border border-amber-800">
+                        <span className="font-bold text-sm text-ink">{flag.studentName || 'Student'}</span>
+                        <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-sun-soft text-sun-deep border border-sun">
                           {flag.misconceptionId?.toUpperCase() || 'Misconception'}
                         </span>
                       </div>
@@ -1251,10 +1215,10 @@ export const TeacherScreen: React.FC = () => {
                         <span
                           className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${
                             flag.confirmed === 'yes'
-                              ? 'bg-emerald-950 text-emerald-300 border-emerald-800'
+                              ? 'bg-leaf-soft text-leaf-deep border-leaf/40'
                               : flag.confirmed === 'no'
-                              ? 'bg-sky-950 text-sky-300 border-sky-800'
-                              : 'bg-slate-800 text-slate-400 border-slate-700'
+                              ? 'bg-paper-deep text-leaf-deep border-paper-edge'
+                              : 'bg-paper-deep text-ink-soft border-paper-edge'
                           }`}
                         >
                           {flag.confirmed === 'yes' && 'Confirmed: Yes, that’s it'}
@@ -1264,20 +1228,20 @@ export const TeacherScreen: React.FC = () => {
                       </div>
                     </div>
 
-                    <div className="text-xs text-slate-300">
-                      <span className="text-slate-500 font-semibold">Question:</span> "{flag.question}"
+                    <div className="text-xs text-ink-soft">
+                      <span className="text-ink-soft font-semibold">Question:</span> "{flag.question}"
                     </div>
 
-                    <div className="p-3 rounded-xl bg-amber-950/30 border border-amber-800/40 text-xs text-amber-200">
-                      <span className="font-bold text-amber-300 block mb-0.5">Diagnosed Reasoning:</span>
+                    <div className="p-3 rounded-xl bg-sun-soft border border-sun text-xs text-sun-deep">
+                      <span className="font-bold text-sun-deep block mb-0.5">Diagnosed Reasoning:</span>
                       "{flag.thoughtProcess}"
                     </div>
 
                     {flag.studentWords && (
-                      <div className="p-2.5 rounded-xl bg-sky-950/30 border border-sky-800/40 text-xs text-sky-200 flex items-start gap-2">
-                        <MessageSquare className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
+                      <div className="p-2.5 rounded-xl bg-paper-deep border border-paper-edge text-xs text-leaf-deep flex items-start gap-2">
+                        <MessageSquare className="w-4 h-4 text-leaf-deep shrink-0 mt-0.5" />
                         <div>
-                          <strong className="text-sky-300">Student's own words:</strong> "{flag.studentWords}"
+                          <strong className="text-leaf-deep">Student's own words:</strong> "{flag.studentWords}"
                         </div>
                       </div>
                     )}
@@ -1291,48 +1255,48 @@ export const TeacherScreen: React.FC = () => {
 
       {/* Cell Detail Modal (shows thought processes behind clicked matrix cell) */}
       {selectedCell && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-paper-deep">
           <div
             role="dialog"
             aria-labelledby="cell-detail-title"
-            className="w-full max-w-lg bg-slate-900 border border-slate-700 rounded-3xl shadow-2xl p-6 text-white space-y-4 max-h-[85vh] overflow-y-auto animate-in zoom-in-95 duration-200"
+            className="w-full max-w-lg bg-paper border border-paper-edge rounded-3xl shadow-[0_3px_0_var(--color-paper-edge)] p-6 text-ink space-y-4 max-h-[85vh] overflow-y-auto rise-in"
           >
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+            <div className="flex items-center justify-between border-b border-paper-edge pb-3">
               <div>
-                <span className="text-[11px] font-bold text-amber-400 uppercase tracking-wide">
-                  Misconception Audit Cell
+                <span className="text-[11px] font-bold text-sun-deep uppercase tracking-wide">
+                  One student, one mix-up
                 </span>
-                <h3 id="cell-detail-title" className="text-base font-bold text-white">
+                <h3 id="cell-detail-title" className="text-base font-bold text-ink">
                   {selectedCell.student.name} × {selectedCell.misconception.id.toUpperCase()}
                 </h3>
               </div>
               <button
                 onClick={() => setSelectedCell(null)}
                 data-testid="close-cell-modal-btn"
-                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+                className="p-1 rounded-lg text-ink-soft hover:text-ink hover:bg-paper-deep"
               >
                 <XCircle className="w-5 h-5" />
               </button>
             </div>
 
             <div className="space-y-2">
-              <span className="text-xs text-slate-400 font-semibold block">Misconception Description:</span>
-              <p className="text-xs text-slate-200 bg-slate-950/60 p-3 rounded-xl border border-slate-800">
+              <span className="text-xs text-ink-soft font-semibold block">Misconception Description:</span>
+              <p className="text-xs text-ink bg-paper-deep p-3 rounded-xl border border-paper-edge">
                 {selectedCell.misconception.label}
               </p>
             </div>
 
-            <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950/60 border border-slate-800 text-xs">
-              <span className="text-slate-400">Current Status:</span>
+            <div className="flex items-center justify-between p-3 rounded-xl bg-paper-deep border border-paper-edge text-xs">
+              <span className="text-ink-soft">Current Status:</span>
               <span
                 className={`font-bold px-2.5 py-0.5 rounded-full border ${
                   selectedCell.status === 'overcome'
-                    ? 'bg-emerald-950 text-emerald-300 border-emerald-800'
+                    ? 'bg-leaf-soft text-leaf-deep border-leaf/40'
                     : selectedCell.status === 'severe'
-                    ? 'bg-rose-950 text-rose-300 border border-rose-800'
+                    ? 'bg-berry-soft text-berry-deep border border-berry/50'
                     : selectedCell.status === 'active'
-                    ? 'bg-amber-950 text-amber-300 border border-amber-800'
-                    : 'bg-slate-800 text-slate-400 border-slate-700'
+                    ? 'bg-sun-soft text-sun-deep border border-sun'
+                    : 'bg-paper-deep text-ink-soft border-paper-edge'
                 }`}
               >
                 {selectedCell.status.toUpperCase()} {selectedCell.strength > 0 ? `(${Math.round(selectedCell.strength * 100)}%)` : ''}
@@ -1340,21 +1304,21 @@ export const TeacherScreen: React.FC = () => {
             </div>
 
             <div className="space-y-2">
-              <span className="text-xs font-bold text-slate-300 block">
+              <span className="text-xs font-bold text-ink-soft block">
                 Observed Thought Processes:
               </span>
               {selectedCell.student.flags.filter((f) => f.misconceptionId === selectedCell.misconception.id).length === 0 ? (
-                <div className="p-3 rounded-xl bg-slate-950/50 border border-slate-800/80 text-xs text-slate-400 italic">
+                <div className="p-3 rounded-xl bg-paper-deep border border-paper-edge text-xs text-ink-soft italic">
                   No specific thought-process flags recorded for this misconception yet.
                 </div>
               ) : (
                 selectedCell.student.flags
                   .filter((f) => f.misconceptionId === selectedCell.misconception.id)
                   .map((f, i) => (
-                    <div key={i} className="p-3 rounded-xl bg-amber-950/20 border border-amber-800/40 text-xs space-y-1">
-                      <p className="text-amber-200 italic font-medium">"{f.thoughtProcess}"</p>
+                    <div key={i} className="p-3 rounded-xl bg-sun-soft border border-sun text-xs space-y-1">
+                      <p className="text-sun-deep italic font-medium">"{f.thoughtProcess}"</p>
                       {f.studentWords && (
-                        <p className="text-sky-300 text-[11px]">
+                        <p className="text-leaf-deep text-[11px]">
                           <strong>Student explained:</strong> "{f.studentWords}"
                         </p>
                       )}
@@ -1363,7 +1327,7 @@ export const TeacherScreen: React.FC = () => {
               )}
             </div>
 
-            <div className="pt-2 flex justify-end gap-2 border-t border-slate-800">
+            <div className="pt-2 flex justify-end gap-2 border-t border-paper-edge">
               <button
                 type="button"
                 onClick={() => {
@@ -1372,9 +1336,8 @@ export const TeacherScreen: React.FC = () => {
                   handleGenerateIntervention('student', st.id);
                 }}
                 data-testid="generate-cell-intervention-btn"
-                className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-sun hover:brightness-105 text-ink rounded-xl text-xs font-bold transition-all shadow-sm"
               >
-                <Sparkles className="w-3.5 h-3.5" />
                 <span>Generate Intervention</span>
               </button>
             </div>
@@ -1384,23 +1347,22 @@ export const TeacherScreen: React.FC = () => {
 
       {/* Intervention Generator Modal */}
       {showInterventionModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-paper-deep">
           <div
             role="dialog"
             aria-labelledby="intervention-modal-title"
-            className="w-full max-w-2xl bg-slate-900 border border-slate-700 rounded-3xl shadow-2xl p-6 text-white space-y-5 max-h-[85vh] overflow-y-auto animate-in zoom-in-95 duration-200"
+            className="w-full max-w-2xl bg-paper border border-paper-edge rounded-3xl shadow-[0_3px_0_var(--color-paper-edge)] p-6 text-ink space-y-5 max-h-[85vh] overflow-y-auto rise-in"
           >
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+            <div className="flex items-center justify-between border-b border-paper-edge pb-3">
               <div className="flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-indigo-400" />
                 <h3 id="intervention-modal-title" className="text-lg font-bold">
-                  Targeted Pedagogical Intervention
+                  A short lesson plan
                 </h3>
               </div>
               <button
                 onClick={() => setShowInterventionModal(false)}
                 data-testid="close-intervention-modal-btn"
-                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+                className="p-1 rounded-lg text-ink-soft hover:text-ink hover:bg-paper-deep"
               >
                 <XCircle className="w-5 h-5" />
               </button>
@@ -1408,25 +1370,25 @@ export const TeacherScreen: React.FC = () => {
 
             {isLoadingIntervention ? (
               <div className="py-16 flex flex-col items-center justify-center text-center space-y-3">
-                <RefreshCw className="w-8 h-8 text-indigo-400 animate-spin" />
-                <p className="text-sm font-semibold text-slate-200">
-                  Professor Byte is crafting a tailored lesson plan & 5-minute activity…
+                <RefreshCw className="w-8 h-8 text-leaf-deep animate-spin" />
+                <p className="text-sm font-semibold text-ink">
+                  Byte is writing a short lesson plan…
                 </p>
-                <p className="text-xs text-slate-500">
-                  Grounding recommendations in the exact cognitive misconceptions and quotes observed.
+                <p className="text-xs text-ink-soft">
+                  It uses what your students actually said.
                 </p>
               </div>
             ) : interventionData ? (
               <div className="space-y-4">
-                <div className="p-4 rounded-2xl bg-indigo-950/60 border border-indigo-700/60 space-y-1">
-                  <h4 className="text-sm font-extrabold text-white">{interventionData.title}</h4>
-                  <p className="text-xs text-indigo-200 italic">{interventionData.pedagogicalInsight}</p>
+                <div className="p-4 rounded-2xl bg-paper-deep border border-paper-edge space-y-1">
+                  <h4 className="text-sm font-extrabold text-ink">{interventionData.title}</h4>
+                  <p className="text-xs text-leaf-deep italic">{interventionData.pedagogicalInsight}</p>
                 </div>
 
                 {/* 3-Bullet Mini-Lesson Plan */}
                 <div className="space-y-2">
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                    <BookOpen className="w-3.5 h-3.5 text-indigo-400" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-ink-soft flex items-center gap-1.5">
+                    <BookOpen className="w-3.5 h-3.5 text-leaf-deep" />
                     3-Bullet Mini-Lesson Plan
                   </span>
                   <div className="space-y-2">
@@ -1434,9 +1396,9 @@ export const TeacherScreen: React.FC = () => {
                       <div
                         key={idx}
                         data-testid="intervention-bullets"
-                        className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 text-xs text-slate-200 flex items-start gap-2.5"
+                        className="p-3 rounded-xl bg-paper-deep border border-paper-edge text-xs text-ink flex items-start gap-2.5"
                       >
-                        <span className="w-5 h-5 rounded-full bg-indigo-500/20 text-indigo-300 font-bold flex items-center justify-center shrink-0 border border-indigo-500/30">
+                        <span className="w-5 h-5 rounded-full bg-sun text-leaf-deep font-bold flex items-center justify-center shrink-0 border border-paper-edge">
                           {idx + 1}
                         </span>
                         <span className="leading-relaxed">{bullet}</span>
@@ -1446,9 +1408,8 @@ export const TeacherScreen: React.FC = () => {
                 </div>
 
                 {/* 5-Minute Offline Activity */}
-                <div className="p-4 rounded-2xl bg-emerald-950/40 border border-emerald-800/60 text-xs text-emerald-200 space-y-1.5">
-                  <strong className="text-emerald-300 flex items-center gap-1.5">
-                    <Sparkles className="w-4 h-4" />
+                <div className="p-4 rounded-2xl bg-leaf-soft border border-leaf/40 text-xs text-leaf-deep space-y-1.5">
+                  <strong className="text-leaf-deep flex items-center gap-1.5">
                     5-Minute Concrete Offline Activity
                   </strong>
                   <p data-testid="intervention-activity" className="leading-relaxed font-medium">
@@ -1457,21 +1418,23 @@ export const TeacherScreen: React.FC = () => {
                 </div>
 
                 {/* Action Bar */}
-                <div className="flex items-center justify-between pt-3 border-t border-slate-800">
-                  <span className="text-xs text-slate-400">
+                <div className="flex items-center justify-between pt-3 border-t border-paper-edge">
+                  <span className="text-xs text-ink-soft">
                     Ready to copy into your lesson plan.
                   </span>
                   <button
                     type="button"
                     onClick={handleCopyIntervention}
                     data-testid="copy-intervention-btn"
-                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all shadow-md"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-leaf hover:brightness-105 text-paper rounded-xl text-xs font-bold transition-all shadow-md"
                   >
                     {copiedIntervention ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                     <span>{copiedIntervention ? 'Copied Plan!' : 'Copy Plan'}</span>
                   </button>
                 </div>
               </div>
+            ) : interventionError ? (
+              <p className="py-10 text-center text-sm font-semibold text-berry-deep">{interventionError}</p>
             ) : null}
           </div>
         </div>
@@ -1479,23 +1442,23 @@ export const TeacherScreen: React.FC = () => {
 
       {/* End of session rundown report modal */}
       {showRundownModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-paper-deep">
           <div
             role="dialog"
             aria-labelledby="rundown-modal-title"
-            className="w-full max-w-3xl bg-slate-900 border border-slate-700 rounded-3xl shadow-2xl p-6 text-white space-y-5 max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-200"
+            className="w-full max-w-3xl bg-paper border border-paper-edge rounded-3xl shadow-[0_3px_0_var(--color-paper-edge)] p-6 text-ink space-y-5 max-h-[90vh] overflow-y-auto rise-in"
           >
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+            <div className="flex items-center justify-between border-b border-paper-edge pb-3">
               <div className="flex items-center gap-2">
-                <FileText className="w-5 h-5 text-indigo-400" />
+                <FileText className="w-5 h-5 text-leaf-deep" />
                 <h3 id="rundown-modal-title" className="text-lg font-bold">
-                  End of Session Pedagogical Rundown
+                  What to reteach
                 </h3>
               </div>
               <button
                 onClick={() => setShowRundownModal(false)}
                 data-testid="close-rundown-btn"
-                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+                className="p-1 rounded-lg text-ink-soft hover:text-ink hover:bg-paper-deep"
               >
                 <XCircle className="w-5 h-5" />
               </button>
@@ -1503,28 +1466,28 @@ export const TeacherScreen: React.FC = () => {
 
             {isLoadingRundown ? (
               <div className="py-16 flex flex-col items-center justify-center text-center space-y-3">
-                <RefreshCw className="w-8 h-8 text-indigo-400 animate-spin" />
-                <p className="text-sm font-semibold text-slate-200">
-                  Professor Byte is analyzing all class attempts and thought-process records…
+                <RefreshCw className="w-8 h-8 text-leaf-deep animate-spin" />
+                <p className="text-sm font-semibold text-ink">
+                  Byte is reading today's answers…
                 </p>
-                <p className="text-xs text-slate-500">
-                  Synthesizing top misconceptions, quoting student logic, and drafting 5-minute reteach activities.
+                <p className="text-xs text-ink-soft">
+                  Finding the biggest mix-ups, with a 5-minute activity for each.
                 </p>
               </div>
             ) : rundownError && !rundownData ? (
               <div className="py-12 flex flex-col items-center justify-center text-center space-y-4">
-                <div className="w-12 h-12 rounded-2xl bg-rose-500/20 text-rose-400 flex items-center justify-center">
+                <div className="w-12 h-12 rounded-2xl bg-berry text-berry-deep flex items-center justify-center">
                   <AlertCircle className="w-6 h-6" />
                 </div>
                 <div className="space-y-1 max-w-md">
-                  <p className="text-sm font-bold text-white">Could not generate AI rundown</p>
-                  <p className="text-xs text-slate-400">{rundownError}</p>
+                  <p className="text-sm font-bold text-ink">Could not generate AI rundown</p>
+                  <p className="text-xs text-ink-soft">{rundownError}</p>
                 </div>
                 <button
                   type="button"
                   onClick={handleGenerateRundown}
                   data-testid="retry-rundown-btn"
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-md transition-all cursor-pointer"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-sun hover:brightness-105 text-ink font-bold text-xs shadow-md transition-all cursor-pointer"
                 >
                   <RefreshCw className="w-4 h-4" />
                   <span>Try again</span>
@@ -1533,18 +1496,18 @@ export const TeacherScreen: React.FC = () => {
             ) : rundownData ? (
               <div className="space-y-5">
                 {/* Priority Order Executive Summary */}
-                <div className="p-4 rounded-2xl bg-indigo-950/60 border border-indigo-700/60 space-y-1">
-                  <span className="text-xs font-bold uppercase tracking-wider text-indigo-300">
-                    What to Reteach First (Executive Summary)
+                <div className="p-4 rounded-2xl bg-paper-deep border border-paper-edge space-y-1">
+                  <span className="text-xs font-bold uppercase tracking-wider text-leaf-deep">
+                    Reteach first
                   </span>
-                  <p className="text-sm font-medium text-slate-200 leading-relaxed">
+                  <p className="text-sm font-medium text-ink leading-relaxed">
                     {rundownData.priorityOrderSummary}
                   </p>
                 </div>
 
                 {/* Top 3 Misconceptions Breakdown */}
                 <div className="space-y-3">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-ink-soft">
                     Top 3 Class Misconceptions & 5-Minute Activities
                   </h4>
 
@@ -1552,33 +1515,32 @@ export const TeacherScreen: React.FC = () => {
                     {rundownData.topMisconceptions.map((item, idx) => (
                       <div
                         key={idx}
-                        className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2.5"
+                        className="p-4 rounded-2xl bg-paper-deep border border-paper-edge space-y-2.5"
                       >
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
-                            <span className="w-6 h-6 rounded-full bg-amber-500/20 text-amber-300 text-xs font-bold flex items-center justify-center border border-amber-500/40">
+                            <span className="w-6 h-6 rounded-full bg-sun text-sun-deep text-xs font-bold flex items-center justify-center border border-sun">
                               #{idx + 1}
                             </span>
-                            <span className="text-sm font-bold text-white">{item.label}</span>
+                            <span className="text-sm font-bold text-ink">{item.label}</span>
                           </div>
-                          <span className="text-[11px] text-amber-300 bg-amber-950/80 px-2 py-0.5 rounded-full border border-amber-800">
+                          <span className="text-[11px] text-sun-deep bg-sun-soft px-2 py-0.5 rounded-full border border-sun">
                             Affects: {item.affectedStudents.join(', ')}
                           </span>
                         </div>
 
-                        <div className="text-xs text-slate-300 space-y-1">
+                        <div className="text-xs text-ink-soft space-y-1">
                           <p>
-                            <strong className="text-slate-400">Typical Student Reasoning:</strong>{' '}
-                            <span className="italic font-medium text-amber-200">"{item.typicalReasoning}"</span>
+                            <strong className="text-ink-soft">Typical Student Reasoning:</strong>{' '}
+                            <span className="italic font-medium text-sun-deep">"{item.typicalReasoning}"</span>
                           </p>
                           <p>
-                            <strong className="text-slate-400">Why Address First:</strong> {item.whyReteach}
+                            <strong className="text-ink-soft">Why Address First:</strong> {item.whyReteach}
                           </p>
                         </div>
 
-                        <div className="p-3 rounded-xl bg-emerald-950/30 border border-emerald-800/40 text-xs text-emerald-200">
-                          <strong className="text-emerald-300 flex items-center gap-1.5 mb-0.5">
-                            <Sparkles className="w-3.5 h-3.5" />
+                        <div className="p-3 rounded-xl bg-leaf-soft border border-leaf/40 text-xs text-leaf-deep">
+                          <strong className="text-leaf-deep flex items-center gap-1.5 mb-0.5">
                             Concrete 5-Minute Reteach Activity:
                           </strong>
                           <span>{item.fiveMinuteActivity}</span>
@@ -1589,14 +1551,14 @@ export const TeacherScreen: React.FC = () => {
                 </div>
 
                 {/* Copy Action Bar */}
-                <div className="flex items-center justify-between pt-3 border-t border-slate-800">
-                  <span className="text-xs text-slate-400">
+                <div className="flex items-center justify-between pt-3 border-t border-paper-edge">
+                  <span className="text-xs text-ink-soft">
                     Ready to paste into lesson notes or LMS.
                   </span>
                   <button
                     onClick={handleCopyRundown}
                     data-testid="copy-rundown-btn"
-                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all shadow-md"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-leaf hover:brightness-105 text-paper rounded-xl text-xs font-bold transition-all shadow-md"
                   >
                     {copiedRundown ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                     <span>{copiedRundown ? 'Copied to Clipboard!' : 'Copy Full Report'}</span>
@@ -1610,3 +1572,169 @@ export const TeacherScreen: React.FC = () => {
     </div>
   );
 };
+
+const RATING_LABEL: Record<Reflection['rating'], string> = { 1: 'Still confused', 2: 'Getting there', 3: 'I get it', 4: 'I could teach it' };
+
+/**
+ * What a student said in their own words: explaining a mix-up to Mia, and rating how well they know a grove.
+ * A rating that disagrees with their results is the line to look at first.
+ */
+const OwnWords: React.FC<{ student: ClassmateData; world: WorldData | null }> = ({ student, world }) => {
+  const teachBacks = (student.teachBacks ?? []).slice(0, 6);
+  const reflections = (student.reflections ?? []).slice(0, 6);
+  const grove = (id: string) => world?.concepts.find((c) => c.id === id)?.questName ?? 'a grove';
+
+  return (
+    <div className="space-y-3 pt-2" data-testid="own-words">
+      <h3 className="text-xs font-bold uppercase tracking-wider text-ink-soft flex items-center gap-1.5">
+        <MessageSquare className="w-4 h-4 text-leaf-deep" />
+        In their own words
+      </h3>
+      {teachBacks.length === 0 && reflections.length === 0 ? (
+        <div className="py-6 text-center text-xs text-ink-soft border border-dashed border-paper-edge rounded-2xl">
+          Nothing yet. Students explain mix-ups to Mia, and rate each grove when they finish it.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {teachBacks.map((r) => (
+            <div key={`t-${r.at}`} className="p-4 rounded-2xl bg-paper-deep border border-paper-edge text-xs space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="flex items-center gap-2 font-bold text-sm text-ink">
+                  <MiaFace size={24} mood={r.passed ? 'happy' : 'puzzled'} />
+                  Explained to Mia
+                </span>
+                <span
+                  className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                    r.passed ? 'bg-leaf-soft text-leaf-deep border border-leaf/40' : 'bg-sun-soft text-sun-deep border border-sun/50'
+                  }`}
+                >
+                  {r.passed ? 'Mia got it' : 'Still stuck'}
+                </span>
+              </div>
+              <p className="text-ink-soft">{grove(r.conceptId)}</p>
+              <p className="text-sm text-ink">
+                “{r.words || '(no words)'}”{r.spoken && <span className="text-ink-soft"> (said out loud)</span>}
+              </p>
+              {r.missing.length > 0 && <p className="text-ink-soft">Didn’t cover: {r.missing.join(' · ')}</p>}
+            </div>
+          ))}
+          {reflections.map((r) => (
+            <div key={`r-${r.at}`} className="p-4 rounded-2xl bg-paper-deep border border-paper-edge text-xs space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="flex items-center gap-2 font-bold text-sm text-ink">
+                  <span className="flex">
+                    {[1, 2, 3, 4].map((i) => (
+                      <Leaf key={i} size={13} hollow={i > r.rating} />
+                    ))}
+                  </span>
+                  {RATING_LABEL[r.rating]}
+                </span>
+                <span className="text-[11px] font-bold text-ink-soft">{Math.round(r.accuracy * 100)}% right</span>
+              </div>
+              <p className="text-ink-soft">Rated {grove(r.conceptId)}</p>
+              {r.note && <p className="text-sm text-ink">“{r.note}”</p>}
+              {judgmentGap(r.rating, r.accuracy) === 'overconfident' && (
+                <p className="font-bold text-berry-deep">Feels sure, but got {Math.round(r.accuracy * 100)}% right. Worth a quick check-in.</p>
+              )}
+              {judgmentGap(r.rating, r.accuracy) === 'underconfident' && (
+                <p className="font-bold text-leaf-deep">Doubts themselves, but got {Math.round(r.accuracy * 100)}% right.</p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+/**
+ * Play together: the teacher opens a room for this forest and reads out the code; students join on their own
+ * devices, walk the same forest, and show up on this page as they play.
+ */
+const ClassRoomPanel: React.FC<{
+  code: string | null;
+  status: 'connected' | 'reconnecting' | null;
+  students: number;
+  error: string | null;
+  onOpen: () => Promise<string | null>;
+  onClose: () => void;
+}> = ({ code, status, students, error, onOpen, onClose }) => {
+  const [opening, setOpening] = useState(false);
+  if (!code) {
+    return (
+      <div className="p-5 rounded-3xl bg-paper border border-paper-edge shadow-[0_3px_0_var(--color-paper-edge)] flex flex-col sm:flex-row sm:items-center gap-4">
+        <div className="flex-1 space-y-1">
+          <h2 className="text-base font-black flex items-center gap-2">
+            <Users className="w-5 h-5 text-leaf-deep" />
+            Play together
+          </h2>
+          <p className="text-sm text-ink-soft">
+            Open a class room for this forest. Students join on their own devices with a code, see each other in the forest, and show up here as they play.
+          </p>
+          {error && <p className="text-sm font-bold text-berry-deep">{error}</p>}
+        </div>
+        <button
+          type="button"
+          disabled={opening}
+          data-testid="open-room-btn"
+          onClick={async () => {
+            setOpening(true);
+            await onOpen();
+            setOpening(false);
+          }}
+          className="px-5 py-3 rounded-xl bg-leaf text-paper font-bold text-sm shadow-[0_3px_0_var(--color-leaf-deep)] hover:brightness-105 disabled:opacity-60"
+        >
+          {opening ? 'Opening…' : 'Open a class room'}
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div className="p-5 rounded-3xl bg-leaf-soft border border-leaf/40 flex flex-col sm:flex-row sm:items-center gap-4" data-testid="room-panel">
+      <div className="flex-1 space-y-1">
+        <p className="text-xs font-bold uppercase tracking-wider text-leaf-deep">Class code</p>
+        <p className="text-4xl font-black tracking-[0.25em]" data-testid="room-code">
+          {code}
+        </p>
+        <p className="text-sm text-ink-soft">
+          Students choose “Join your class” on the start screen and type this code.{' '}
+          <span className="font-bold text-ink" data-testid="room-students">
+            {students} student{students === 1 ? '' : 's'} here
+          </span>
+          {status === 'reconnecting' && <span className="font-bold text-sun-deep"> · reconnecting…</span>}
+        </p>
+      </div>
+      <button type="button" onClick={onClose} className="px-4 py-2.5 rounded-xl bg-paper border border-paper-edge text-sm font-bold hover:bg-paper-deep">
+        Close the room
+      </button>
+    </div>
+  );
+};
+
+/** Sample classmates' words, so a reading forest's samples talk about reading, not fractions. */
+const SAMPLE_LINES = {
+  maths: {
+    alex: ['You divided only the top number and left the bottom number the same.', 'Alex often skips the bottom number.'],
+    marcus: ['You compared the top numbers and picked the bigger one.', 'Marcus looks only at the top numbers.'],
+    zoe: ['You added the top numbers and the bottom numbers separately.', 'Zoe adds fractions like whole numbers.'],
+    zoeWords: 'I thought fractions add straight across.',
+    alexRight: 'Alex got simplest form with the picture.',
+    alexTaught: 'You just have to make the number smaller.',
+    alexNote: 'The bottom number confuses me.',
+    sophiaRight: ['Sophia has strong number sense.', 'Sophia finds common denominators.'],
+    sophiaNote: 'Whatever you do to the top, do to the bottom.',
+    marcusNote: 'Easy, bigger numbers mean bigger fractions.',
+  },
+  reading: {
+    alex: ['You picked the first sentence, but here it’s a hook, not the main idea.', 'Alex often goes with the first line.'],
+    marcus: ['You wanted the passage to say it out loud, so you missed the clues.', 'Marcus only trusts words that are written down.'],
+    zoe: ['You used the usual meaning of the word, not the one in this sentence.', 'Zoe uses the first meaning she knows.'],
+    zoeWords: 'I thought beat always means hit.',
+    alexRight: 'Alex found the main idea by reading every sentence.',
+    alexTaught: 'The main idea is just the first sentence.',
+    alexNote: 'Finding the main idea is still hard.',
+    sophiaRight: ['Sophia checks what most sentences are about.', 'Sophia backs up her guesses with clues.'],
+    sophiaNote: 'I look for what most of the sentences talk about.',
+    marcusNote: 'Easy, the answer is always written in the text.',
+  },
+} as const;

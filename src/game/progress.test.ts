@@ -1,0 +1,181 @@
+import { describe, expect, it } from 'vitest';
+import { SAMPLE_WORLD } from '../data/sampleWorld';
+import type { QuestionAttempt, TreeData } from '../types/game';
+import {
+  canOpenTree,
+  countCompletedGroves,
+  currentStreak,
+  dedupeTreeIds,
+  isGroveComplete,
+  rootTreeId,
+  unlockedConcepts,
+  groveHealth,
+  activeMisconception,
+  weakenMisconception,
+  worldFingerprint,
+} from './progress';
+
+const tree = (id: string, conceptId: string, state: TreeData['state'], extra: Partial<TreeData> = {}): TreeData => ({
+  id,
+  conceptId,
+  question: 'q',
+  choices: ['a', 'b', 'c', 'd'],
+  answerIndex: 0,
+  explanation: '',
+  citation: null,
+  state,
+  ...extra,
+});
+
+describe('isGroveComplete', () => {
+  it('counts only the worksheet’s own trees, answered right', () => {
+    const trees = [tree('a', 'c1', 'healthy'), tree('b', 'c1', 'regrown')];
+    expect(isGroveComplete(trees, 'c1')).toBe(true);
+  });
+
+  it('ignores saplings, made-for-you, teacher and memory trees either way', () => {
+    const trees = [
+      tree('a', 'c1', 'healthy'),
+      tree('s', 'c1', 'sapling', { isSapling: true }),
+      tree('m', 'c1', 'unanswered', { isTargeted: true }),
+      tree('t', 'c1', 'withered', { isTeacherDeployed: true }),
+      tree('r', 'c1', 'unanswered', { isMemorySprout: true }),
+    ];
+    expect(isGroveComplete(trees, 'c1')).toBe(true);
+  });
+
+  it('is not complete while one of its own trees is open or withered, or when it has none', () => {
+    expect(isGroveComplete([tree('a', 'c1', 'healthy'), tree('b', 'c1', 'withered')], 'c1')).toBe(false);
+    expect(isGroveComplete([tree('a', 'c1', 'unanswered')], 'c1')).toBe(false);
+    expect(isGroveComplete([], 'c1')).toBe(false);
+  });
+});
+
+describe('groveHealth', () => {
+  it('is the share of the grove’s own trees currently grown, ignoring extras', () => {
+    const trees = [
+      tree('a', 'c1', 'healthy'),
+      tree('b', 'c1', 'regrown'),
+      tree('c', 'c1', 'withered'),
+      tree('d', 'c1', 'unanswered'),
+      tree('x', 'c1', 'healthy', { isTargeted: true }),
+    ];
+    expect(groveHealth(trees, 'c1')).toBe(0.5);
+    expect(groveHealth([], 'c1')).toBe(0);
+  });
+});
+
+describe('unlockedConcepts', () => {
+  const world = SAMPLE_WORLD;
+
+  it('opens the next grove at 60% grown, so one hard question never blocks a kid', () => {
+    const c1 = world.trees.filter((t) => t.conceptId === 'c1').map((t) => t.id);
+    const grown = (n: number) => world.trees.map((t) => ({ ...t, state: c1.indexOf(t.id) > -1 && c1.indexOf(t.id) < n ? ('healthy' as const) : ('unanswered' as const) }));
+    expect(unlockedConcepts(world, grown(2))).toEqual(['c1']); // 2 of 5
+    expect(unlockedConcepts(world, grown(3))).toEqual(['c1', 'c2']); // 3 of 5
+  });
+
+  it('opens only groves whose prerequisites are complete', () => {
+    const fresh = world.trees.map((t) => ({ ...t, state: 'unanswered' as const }));
+    expect(unlockedConcepts(world, fresh)).toEqual(['c1']);
+
+    const c1Done = fresh.map((t) => (t.conceptId === 'c1' ? { ...t, state: 'healthy' as const } : t));
+    expect(unlockedConcepts(world, c1Done)).toEqual(['c1', 'c2']);
+  });
+
+  it('treats a prerequisite with no trees of its own as done', () => {
+    const trees = world.trees.filter((t) => t.conceptId !== 'c1');
+    expect(unlockedConcepts(world, trees)).toContain('c2');
+  });
+});
+
+describe('countCompletedGroves', () => {
+  it('uses the same definition as the signs and the unlocks', () => {
+    const trees = SAMPLE_WORLD.trees.map((t) => ({ ...t, state: t.conceptId === 'c1' ? ('regrown' as const) : ('unanswered' as const) }));
+    expect(countCompletedGroves(SAMPLE_WORLD.concepts, trees)).toBe(1);
+  });
+});
+
+describe('rootTreeId', () => {
+  it('follows a chain of saplings back to the worksheet tree', () => {
+    const trees = [
+      tree('t1', 'c1', 'withered'),
+      tree('s1', 'c1', 'withered', { isSapling: true, sourceTreeId: 't1' }),
+      tree('s2', 'c1', 'sapling', { isSapling: true, sourceTreeId: 's1' }),
+    ];
+    expect(rootTreeId(trees, trees[2])).toBe('t1');
+    expect(rootTreeId(trees, trees[0])).toBe('t1');
+  });
+
+  it('stops on a loop instead of hanging', () => {
+    const trees = [tree('a', 'c1', 'sapling', { sourceTreeId: 'b' }), tree('b', 'c1', 'sapling', { sourceTreeId: 'a' })];
+    expect(['a', 'b']).toContain(rootTreeId(trees, trees[0]));
+  });
+});
+
+describe('canOpenTree', () => {
+  it('lets a kid open a tree that is still open', () => {
+    expect(canOpenTree(tree('a', 'c1', 'unanswered'), ['c1'])).toEqual({ ok: true });
+  });
+
+  it('keeps answered trees closed (a wrong repeat answer used to lock groves again)', () => {
+    expect(canOpenTree(tree('a', 'c1', 'healthy'), ['c1'])).toEqual({ ok: false, reason: 'done' });
+    expect(canOpenTree(tree('a', 'c1', 'regrown'), ['c1'])).toEqual({ ok: false, reason: 'done' });
+  });
+
+  it('opens a grown tree again when it is due for a memory check', () => {
+    expect(canOpenTree(tree('a', 'c1', 'healthy', { memoryDue: true }), ['c1'])).toEqual({ ok: true });
+  });
+
+  it('keeps a withered tree closed: its sapling brings the question back later', () => {
+    expect(canOpenTree(tree('a', 'c1', 'withered'), ['c1'])).toEqual({ ok: false, reason: 'withered' });
+  });
+
+  it('keeps locked groves and waiting saplings closed', () => {
+    expect(canOpenTree(tree('a', 'c2', 'unanswered'), ['c1'])).toEqual({ ok: false, reason: 'locked' });
+    expect(canOpenTree(tree('s', 'c1', 'sapling', { answersSinceMiss: 1 }), ['c1'])).toEqual({ ok: false, reason: 'waiting' });
+    expect(canOpenTree(tree('s', 'c1', 'sapling', { answersSinceMiss: 2 }), ['c1'])).toEqual({ ok: true });
+  });
+});
+
+describe('currentStreak', () => {
+  const attempt = (correct: boolean) => ({ correct }) as QuestionAttempt;
+
+  it('counts correct answers in a row, newest first, and can be zero', () => {
+    expect(currentStreak([attempt(true), attempt(true), attempt(false), attempt(true)])).toBe(2);
+    expect(currentStreak([attempt(false), attempt(true)])).toBe(0);
+    expect(currentStreak([])).toBe(0);
+  });
+});
+
+describe('dedupeTreeIds', () => {
+  it('renames repeated ids from Gemini so no two trees share one', () => {
+    const trees = [tree('t1', 'c1', 'unanswered'), tree('t1', 'c1', 'unanswered'), tree('t1', 'c2', 'unanswered')];
+    const ids = dedupeTreeIds(trees).map((t) => t.id);
+    expect(new Set(ids).size).toBe(3);
+    expect(ids[0]).toBe('t1');
+  });
+});
+
+describe('activeMisconception', () => {
+  it('is the strongest mix-up above the threshold that is not already fixed', () => {
+    expect(activeMisconception({ m1: 0.2, m2: 0.7, m3: 0.5 }, [])).toBe('m2');
+    expect(activeMisconception({ m1: 0.2, m2: 0.7, m3: 0.5 }, ['m2'])).toBe('m3');
+    expect(activeMisconception({ m1: 0.2 }, [])).toBeNull();
+  });
+});
+
+describe('weakenMisconception', () => {
+  it('halves a mix-up on a right answer and lets a faint one reach zero', () => {
+    expect(weakenMisconception(0.8)).toBe(0.4);
+    expect(weakenMisconception(0.06)).toBe(0); // it used to halve forever and show "Active 1%"
+  });
+});
+
+describe('worldFingerprint', () => {
+  it('tells two worlds with the same title apart, so saves never mix', () => {
+    const other = { ...SAMPLE_WORLD, trees: SAMPLE_WORLD.trees.map((t, i) => (i === 0 ? { ...t, question: 'Simplify 6/12.' } : t)) };
+    expect(worldFingerprint(SAMPLE_WORLD)).toBe(worldFingerprint({ ...SAMPLE_WORLD }));
+    expect(worldFingerprint(other)).not.toBe(worldFingerprint(SAMPLE_WORLD));
+  });
+});

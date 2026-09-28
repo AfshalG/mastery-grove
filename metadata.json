@@ -1,7 +1,9 @@
 {
   "name": "Mastery Grove",
-  "description": "A 3D learning game: a teacher's worksheet becomes a forest of questions, and a Gemini tutor works out how each student thinks, predicts their next mistake, and briefs the teacher on what to reteach.",
-  "requestFramePermissions": [],
+  "description": "A 3D learning game: a teacher's worksheet becomes a forest of questions. A Gemini tutor works out how each student thinks, students explain mix-ups back to a puzzled classmate, bridges build as they learn, and the teacher sees what to reteach, live, for the whole class.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
   ]

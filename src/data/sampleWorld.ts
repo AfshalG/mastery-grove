@@ -250,26 +250,27 @@ export const SAMPLE_WORLD: WorldData = {
       citation: null,
       state: 'unanswered',
     },
-    // Grove 2 Hands-On Serve Question
+    // Grove 2 hands-on challenge: build the bridge (the same maths as serving a cake, on planks)
     {
       id: 't2_serve',
       conceptId: 'c2',
-      question: 'Serve 3/4 of the cake.',
+      question: 'Lay 3/4 of the planks on the bridge.',
       kind: 'serve',
       serveConfig: {
         targetNumerator: 3,
         targetDenominator: 4,
         totalSlices: 8,
+        whole: 'bridge',
       },
       visual: {
-        kind: 'cake',
+        kind: 'bar',
         parts: 8,
         shaded: 6,
       },
       choices: [],
       answerIndex: 6,
       explanation:
-        'The cake has 8 slices. To serve 3/4 of it, convert 3/4 to eighths: (3×2)/(4×2) = 6/8. You need to serve 6 slices!',
+        'The bridge has 8 planks in 4 equal groups of 2. Three of those groups is 6 planks, so 3/4 of the bridge is 6 planks.',
       citation: null,
       state: 'unanswered',
     },
@@ -382,6 +383,42 @@ export const SAMPLE_WORLD: WorldData = {
         'The cake is divided into 12 slices. 5/6 converted to twelfths is (5×2)/(6×2) = 10/12. Serving 10 slices serves exactly 5/6 of the whole cake!',
       citation: null,
       state: 'unanswered',
+    },
+  ],
+  // Mia, at the heart of each grove, holds one of the grove's mix-ups. Rubric points are in plain kid words.
+  teachSpots: [
+    {
+      conceptId: 'c1',
+      misconceptionId: 'm2',
+      puzzledThought: 'To simplify 4/8, I halved the top and got 2/8. My teacher marked it wrong. Why?',
+      board: '4/8 = 2/8 ?',
+      rubricPoints: [
+        'Divide the top and the bottom by the same number',
+        '2/8 is less than 4/8, so it is not the same amount',
+        '4/8 simplifies to 1/2',
+      ],
+    },
+    {
+      conceptId: 'c2',
+      misconceptionId: 'm3',
+      puzzledThought: '5/8 is bigger than 3/4, because 5 is bigger than 3. Right?',
+      board: '5/8 > 3/4 ?',
+      rubricPoints: [
+        'Eighths are smaller pieces than quarters, so you cannot just compare the tops',
+        'Change 3/4 to 6/8 so the bottoms match',
+        '6/8 is more than 5/8, so 3/4 is bigger',
+      ],
+    },
+    {
+      conceptId: 'c3',
+      misconceptionId: 'm5',
+      puzzledThought: '1/2 + 1/3 = 2/5. I added the tops and I added the bottoms. What did I do wrong?',
+      board: '1/2 + 1/3 = 2/5 ?',
+      rubricPoints: [
+        'You cannot add the bottoms. Make them the same first, like sixths',
+        '1/2 is 3/6 and 1/3 is 2/6',
+        '3/6 + 2/6 = 5/6',
+      ],
     },
   ],
 };
